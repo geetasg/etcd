@@ -473,6 +473,9 @@ message RangeRequest {
   // max_create_revision is the upper bound for returned key create revisions; all keys with
   // greater create revisions will be filtered away.
   int64 max_create_revision = 13 [(versionpb.etcd_version_field)="3.1"];
+
+  // server_limit when set returns pagination limit recommended by the server.
+  bool server_limit = 14;
 }
 
 message RangeResponse {
@@ -486,6 +489,8 @@ message RangeResponse {
   bool more = 3;
   // count is set to the number of keys within the range when requested.
   int64 count = 4;
+  // serverlimit is set to pagination limit recommended by server.
+  int64 serverlimit = 5;
 }
 
 message PutRequest {

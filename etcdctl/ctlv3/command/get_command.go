@@ -34,6 +34,8 @@ var (
 	getKeysOnly    bool
 	getCountOnly   bool
 	printValueOnly bool
+	getServerlimit bool
+	useServerlimit bool
 )
 
 // NewGetCommand returns the cobra command for "get".
@@ -54,6 +56,8 @@ func NewGetCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&getKeysOnly, "keys-only", false, "Get only the keys")
 	cmd.Flags().BoolVar(&getCountOnly, "count-only", false, "Get only the count")
 	cmd.Flags().BoolVar(&printValueOnly, "print-value-only", false, `Only write values when using the "simple" output format`)
+	cmd.Flags().BoolVar(&getServerlimit, "get-server-limit", false, "Get pagination limit recommendation from server")
+	cmd.Flags().BoolVar(&useServerlimit, "use-server-limit", false, "Honor pagination limit recommendation from server")
 
 	cmd.RegisterFlagCompletionFunc("consistency", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"l", "s"}, cobra.ShellCompDirectiveDefault
@@ -90,6 +94,11 @@ func getCommandFunc(cmd *cobra.Command, args []string) {
 			cobrautl.ExitWithError(cobrautl.ExitBadArgs, fmt.Errorf("print-value-only is only for `--write-out=simple`"))
 		}
 		dp.valueOnly = true
+	}
+	if getServerlimit {
+		if _, fields := display.(*fieldsPrinter); !fields {
+			cobrautl.ExitWithError(cobrautl.ExitBadArgs, fmt.Errorf("--get-server-limit is only for `--write-out=fields`"))
+		}
 	}
 	display.Get(*resp)
 }
@@ -185,6 +194,14 @@ func getGetOp(args []string) (string, []clientv3.OpOption) {
 
 	if getCountOnly {
 		opts = append(opts, clientv3.WithCountOnly())
+	}
+
+	if getServerlimit {
+		opts = append(opts, clientv3.WithServerlimit())
+	}
+
+	if useServerlimit {
+		opts = append(opts, clientv3.WithUseServerlimit())
 	}
 
 	return key, opts

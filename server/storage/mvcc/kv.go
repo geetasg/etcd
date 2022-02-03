@@ -27,12 +27,14 @@ type RangeOptions struct {
 	Limit int64
 	Rev   int64
 	Count bool
+	Serverlimit bool
 }
 
 type RangeResult struct {
 	KVs   []mvccpb.KeyValue
 	Rev   int64
 	Count int
+	Serverlimit int64
 }
 
 type ReadView interface {
