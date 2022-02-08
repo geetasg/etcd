@@ -337,6 +337,8 @@ func (a *applierV3backend) Range(ctx context.Context, txn mvcc.TxnRead, r *pb.Ra
 	resp := &pb.RangeResponse{}
 	resp.Header = &pb.ResponseHeader{}
 
+	lg := a.s.Logger()
+
 	if txn == nil {
 		txn = a.s.kv.Read(mvcc.ConcurrentReadTxMode, trace)
 		defer txn.End()
@@ -358,7 +360,6 @@ func (a *applierV3backend) Range(ctx context.Context, txn mvcc.TxnRead, r *pb.Ra
 		Limit: limit,
 		Rev:   r.Revision,
 		Count: r.CountOnly,
-		Serverlimit: r.ServerLimit,
 	}
 
 	rr, err := txn.Range(ctx, r.Key, mkGteRange(r.RangeEnd), ro)
@@ -408,6 +409,8 @@ func (a *applierV3backend) Range(ctx context.Context, txn mvcc.TxnRead, r *pb.Ra
 			sorter = &kvSortByMod{&kvSort{rr.KVs}}
 		case r.SortTarget == pb.RangeRequest_VALUE:
 			sorter = &kvSortByValue{&kvSort{rr.KVs}}
+		default:
+			lg.Panic("unexpected sort target", zap.Int32("sort-target", int32(r.SortTarget)))
 		}
 		switch {
 		case sortOrder == pb.RangeRequest_ASCEND:
@@ -424,8 +427,6 @@ func (a *applierV3backend) Range(ctx context.Context, txn mvcc.TxnRead, r *pb.Ra
 	trace.Step("filter and sort the key-value pairs")
 	resp.Header.Revision = rr.Rev
 	resp.Count = int64(rr.Count)
-	fmt.Printf("Server limit is : %d\n", rr.Serverlimit)
-	resp.Serverlimit = int64(rr.Serverlimit)
 	resp.Kvs = make([]*mvccpb.KeyValue, len(rr.KVs))
 	for i := range rr.KVs {
 		if r.KeysOnly {

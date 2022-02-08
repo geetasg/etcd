@@ -15,11 +15,10 @@
 package clientv3
 
 import (
-	"fmt"
 	"context"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"go.etcd.io/etcd/api/v3/mvccpb"
 
 	"google.golang.org/grpc"
 )
@@ -143,88 +142,19 @@ func (kv *kv) Txn(ctx context.Context) Txn {
 	}
 }
 
-func (kv *kv) rangeWithServerLimit(ctx context.Context, op Op) (OpResponse, error) {
-	var resp *pb.RangeResponse
-	var err error
-	fmt.Printf("start key: %s\n", op.key)
-
-	if !op.useServerLimit {
-		resp, err = kv.remote.Range(ctx, op.toRangeRequest(), kv.callOpts...)
-		if err == nil {
-			return OpResponse{get: (*GetResponse)(resp)}, nil
-		} else {
-			return OpResponse{}, toErr(ctx, err)
-		}
-	}
-
-	op.serverLimit = true
-	resp, err = kv.remote.Range(ctx, op.toRangeRequest(), kv.callOpts...)
-	if err == nil {
-		fmt.Printf("Got server limit as: %d and total count as: %d\n", resp.Serverlimit, resp.Count)
-	}
-	op.serverLimit = false
-
-	if resp.Count <= resp.Serverlimit {
-		resp, err = kv.remote.Range(ctx, op.toRangeRequest(), kv.callOpts...)
-		if err == nil {
-			return OpResponse{get: (*GetResponse)(resp)}, nil
-		} else {
-			return OpResponse{}, toErr(ctx, err)
-		}
-	}
-
-	//Need to iterate
-	var currentCount int64
-	op.limit = resp.Serverlimit
-	totalCount := resp.Count
-	var lastKey []byte
-	var output pb.RangeResponse
-	//var hasMore bool
-	var index int
-	//TODO do we need to construct this
-	output.Header = resp.Header
-	output.Kvs = make([]*mvccpb.KeyValue, totalCount)
-	var lastKV *mvccpb.KeyValue
-
-	for {
-	        if currentCount >= totalCount {
-			break
-		}
-
-		resp, err = kv.remote.Range(ctx, op.toRangeRequest(), kv.callOpts...)
-		for i, kv := range resp.Kvs {
-			//TODO we cannot deal with limit of 1 since we wont know the start key for the next batch
-			lastKey = kv.Key
-			lastKV = kv
-			if i == len(resp.Kvs) - 1 {
-				//do not copy the lastKey. We will use it as start key for next batch
-				break
-			}
-			output.Kvs[index] = kv
-			index = index + 1
-
-		}
-		currentCount += int64(len(resp.Kvs))
-		/*
-		hasMore = resp.More
-		if len(resp.Kvs) == 0 && resp.More {
-			fmt.Printf("Error. no results were found but more is set\n")
-			break
-		}
-		*/
-		fmt.Printf("last key for current batch = start key for next batch: %s\n", string(lastKey))
-		op.key = lastKey
-	}
-	//copy out the lastKV which we left out
-	output.Kvs[index] = lastKV
-	return OpResponse{get: (*GetResponse)(&output)}, nil
-}
-
 func (kv *kv) Do(ctx context.Context, op Op) (OpResponse, error) {
 	var err error
 	switch op.t {
 	case tRange:
-		return kv.rangeWithServerLimit(ctx, op)
+		if op.IsSortOptionValid() {
+			var resp *pb.RangeResponse
+			resp, err = kv.remote.Range(ctx, op.toRangeRequest(), kv.callOpts...)
+			if err == nil {
+				return OpResponse{get: (*GetResponse)(resp)}, nil
+			}
+		} else {
+			err = rpctypes.ErrInvalidSortOption
+		}
 	case tPut:
 		var resp *pb.PutResponse
 		r := &pb.PutRequest{Key: op.key, Value: op.val, Lease: int64(op.leaseID), PrevKv: op.prevKV, IgnoreValue: op.ignoreValue, IgnoreLease: op.ignoreLease}

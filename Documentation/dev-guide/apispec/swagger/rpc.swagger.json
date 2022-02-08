@@ -2600,11 +2600,6 @@
           "type": "boolean",
           "format": "boolean"
         },
-        "server_limit": {
-          "description": "server_limit when set returns pagination limit recommended by the server.",
-          "type": "boolean",
-          "format": "boolean"
-        },
         "sort_order": {
           "description": "sort_order is the order for returned sorted results.",
           "$ref": "#/definitions/RangeRequestSortOrder"
@@ -2637,11 +2632,6 @@
           "description": "more indicates if there are more keys to return in the requested range.",
           "type": "boolean",
           "format": "boolean"
-        },
-        "serverlimit": {
-          "description": "serverlimit is set to pagination limit recommended by server.",
-          "type": "string",
-          "format": "int64"
         }
       }
     },

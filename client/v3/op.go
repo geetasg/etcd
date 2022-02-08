@@ -40,8 +40,6 @@ type Op struct {
 	serializable bool
 	keysOnly     bool
 	countOnly    bool
-	serverLimit    bool
-	useServerLimit    bool
 	minModRev    int64
 	maxModRev    int64
 	minCreateRev int64
@@ -126,12 +124,6 @@ func (op Op) IsKeysOnly() bool { return op.keysOnly }
 // IsCountOnly returns whether countOnly is set.
 func (op Op) IsCountOnly() bool { return op.countOnly }
 
-// IsServerlimit returns whether serverLimit is set.
-func (op Op) IsServerlimit() bool { return op.serverLimit }
-
-// IsUseServerlimit returns whether serverLimit is set.
-func (op Op) IsUseServerlimit() bool { return op.useServerLimit }
-
 // MinModRev returns the operation's minimum modify revision.
 func (op Op) MinModRev() int64 { return op.minModRev }
 
@@ -165,7 +157,6 @@ func (op Op) toRangeRequest() *pb.RangeRequest {
 		Serializable:      op.serializable,
 		KeysOnly:          op.keysOnly,
 		CountOnly:         op.countOnly,
-		ServerLimit:       op.serverLimit,
 		MinModRevision:    op.minModRev,
 		MaxModRevision:    op.maxModRev,
 		MinCreateRevision: op.minCreateRev,
@@ -264,8 +255,6 @@ func OpDelete(key string, opts ...OpOption) Op {
 		panic("unexpected serializable in delete")
 	case ret.countOnly:
 		panic("unexpected countOnly in delete")
-	case ret.serverLimit:
-		panic("unexpected serverLimit in delete")
 	case ret.minModRev != 0, ret.maxModRev != 0:
 		panic("unexpected mod revision filter in delete")
 	case ret.minCreateRev != 0, ret.maxCreateRev != 0:
@@ -295,8 +284,6 @@ func OpPut(key, val string, opts ...OpOption) Op {
 		panic("unexpected serializable in put")
 	case ret.countOnly:
 		panic("unexpected countOnly in put")
-	case ret.serverLimit:
-		panic("unexpected serverLimit in put")
 	case ret.minModRev != 0, ret.maxModRev != 0:
 		panic("unexpected mod revision filter in put")
 	case ret.minCreateRev != 0, ret.maxCreateRev != 0:
@@ -328,8 +315,6 @@ func opWatch(key string, opts ...OpOption) Op {
 		panic("unexpected serializable in watch")
 	case ret.countOnly:
 		panic("unexpected countOnly in watch")
-	case ret.serverLimit:
-		panic("unexpected serverLimit in watch")
 	case ret.minModRev != 0, ret.maxModRev != 0:
 		panic("unexpected mod revision filter in watch")
 	case ret.minCreateRev != 0, ret.maxCreateRev != 0:
@@ -449,16 +434,6 @@ func WithKeysOnly() OpOption {
 // WithCountOnly makes the 'Get' request return only the count of keys.
 func WithCountOnly() OpOption {
 	return func(op *Op) { op.countOnly = true }
-}
-
-// WithServerlimit makes the 'Get' request return pagination limit recommendation from server.
-func WithServerlimit() OpOption {
-	return func(op *Op) { op.serverLimit = true }
-}
-
-// WithServerlimit makes the 'Get' request return pagination limit recommendation from server.
-func WithUseServerlimit() OpOption {
-	return func(op *Op) { op.useServerLimit = true }
 }
 
 // WithMinModRev filters out keys for Get with modification revisions less than the given revision.
@@ -622,4 +597,3 @@ func (op Op) IsSortOptionValid() bool {
 	}
 	return true
 }
-
