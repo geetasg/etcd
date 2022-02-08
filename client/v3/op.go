@@ -44,6 +44,7 @@ type Op struct {
 	maxModRev    int64
 	minCreateRev int64
 	maxCreateRev int64
+	usePagination bool
 
 	// for range, watch
 	rev int64

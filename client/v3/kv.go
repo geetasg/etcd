@@ -16,11 +16,13 @@ package clientv3
 
 import (
 	"context"
+	"fmt"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 
 	"google.golang.org/grpc"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 )
 
 type (
@@ -142,16 +144,71 @@ func (kv *kv) Txn(ctx context.Context) Txn {
 	}
 }
 
+func (kv *kv) rangeWithPagination(ctx context.Context, op Op) (OpResponse, error) {
+	var err error
+	var resp *pb.RangeResponse
+	//TODO this comes from WithPagination
+	op.usePagination = true
+	if !op.usePagination {
+		resp, err = kv.remote.Range(ctx, op.toRangeRequest(), kv.callOpts...)
+		if err == nil {
+			return OpResponse{get: (*GetResponse)(resp)}, nil
+		}
+	}
+	op.countOnly = true
+	resp, err = kv.remote.Range(ctx, op.toRangeRequest(), kv.callOpts...)
+	if err != nil {
+		return OpResponse{}, toErr(ctx, err)
+	}
+	op.countOnly = false
+
+	totalCount := resp.Count
+	fmt.Printf("totalCount: %d\n", totalCount)
+	var currentCount int64
+	var lastKey []byte
+	var output pb.RangeResponse
+	var index int
+	output.Header = resp.Header
+	output.Kvs = make([]*mvccpb.KeyValue, totalCount)
+	var lastKV *mvccpb.KeyValue
+
+	op.limit = totalCount
+	if totalCount > 1 {
+		op.limit = 2
+	}
+
+	for {
+		if currentCount >= totalCount {
+			break
+		}
+
+		resp, err = kv.remote.Range(ctx, op.toRangeRequest(), kv.callOpts...)
+		for i, kv := range resp.Kvs {
+			lastKey = kv.Key
+			lastKV = kv
+			//note - we cannot deal with batch size of 1 this way
+			if i == len(resp.Kvs) - 1 {
+				//do not copy last key. It is the start key of next batch
+				break
+			}
+			output.Kvs[index] = kv
+			index = index + 1
+		}
+		currentCount += int64(len(resp.Kvs))
+		op.key = lastKey
+	}
+
+	//Copy out the last key
+	output.Kvs[index] = lastKV
+	return OpResponse{get: (*GetResponse)(&output)}, nil
+}
+
 func (kv *kv) Do(ctx context.Context, op Op) (OpResponse, error) {
 	var err error
 	switch op.t {
 	case tRange:
 		if op.IsSortOptionValid() {
-			var resp *pb.RangeResponse
-			resp, err = kv.remote.Range(ctx, op.toRangeRequest(), kv.callOpts...)
-			if err == nil {
-				return OpResponse{get: (*GetResponse)(resp)}, nil
-			}
+			return kv.rangeWithPagination(ctx, op)
 		} else {
 			err = rpctypes.ErrInvalidSortOption
 		}
