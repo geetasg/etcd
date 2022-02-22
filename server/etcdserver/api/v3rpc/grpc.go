@@ -46,6 +46,7 @@ func Server(s *etcdserver.EtcdServer, tls *tls.Config, interceptor grpc.UnarySer
 	chainUnaryInterceptors := []grpc.UnaryServerInterceptor{
 		newLogUnaryInterceptor(s),
 		newUnaryInterceptor(s),
+		newQmonInterceptor(s),
 		grpc_prometheus.UnaryServerInterceptor,
 	}
 	if interceptor != nil {
