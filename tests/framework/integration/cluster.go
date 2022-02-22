@@ -170,6 +170,7 @@ type ClusterConfig struct {
 	WatchProgressNotifyInterval time.Duration
 	ExperimentalMaxLearners     int
 	StrictReconfigCheck         bool
+	CorruptCheckTime            time.Duration
 }
 
 type Cluster struct {
@@ -282,6 +283,7 @@ func (c *Cluster) mustNewMember(t testutil.TB) *Member {
 			WatchProgressNotifyInterval: c.Cfg.WatchProgressNotifyInterval,
 			ExperimentalMaxLearners:     c.Cfg.ExperimentalMaxLearners,
 			StrictReconfigCheck:         c.Cfg.StrictReconfigCheck,
+			CorruptCheckTime:            c.Cfg.CorruptCheckTime,
 		})
 	m.DiscoveryURL = c.Cfg.DiscoveryURL
 	return m
@@ -571,6 +573,7 @@ type MemberConfig struct {
 	WatchProgressNotifyInterval time.Duration
 	ExperimentalMaxLearners     int
 	StrictReconfigCheck         bool
+	CorruptCheckTime            time.Duration
 }
 
 // MustNewMember return an inited member with the given name. If peerTLS is
@@ -584,6 +587,8 @@ func MustNewMember(t testutil.TB, mcfg MemberConfig) *Member {
 
 	peerScheme := SchemeFromTLSInfo(mcfg.PeerTLS)
 	clientScheme := SchemeFromTLSInfo(mcfg.ClientTLS)
+
+	m.EnableV2Discovery = embed.DefaultEnableV2Discovery
 
 	pln := newLocalListener(t)
 	m.PeerListeners = []net.Listener{pln}
@@ -673,6 +678,9 @@ func MustNewMember(t testutil.TB, mcfg MemberConfig) *Member {
 	m.WatchProgressNotifyInterval = mcfg.WatchProgressNotifyInterval
 
 	m.InitialCorruptCheck = true
+	if mcfg.CorruptCheckTime > time.Duration(0) {
+		m.CorruptCheckTime = mcfg.CorruptCheckTime
+	}
 	m.WarningApplyDuration = embed.DefaultWarningApplyDuration
 	m.WarningUnaryRequestDuration = embed.DefaultWarningUnaryRequestDuration
 	m.ExperimentalMaxLearners = membership.DefaultMaxLearners
