@@ -54,16 +54,16 @@ type Query struct {
 }
 
 type QueryMonitor interface {
-	//Start the monitoring
+	// Start the monitoring
 	Start()
 
-	//Update counters
+	// UpdateUsage : update counters
 	UpdateUsage(req interface{}, resp interface{})
 
-	// Decide if we can admit the request.
+	// AdmitReq : Decide if we can admit the request.
 	AdmitReq(req interface{}) bool
 
-	//Stop the monitoring
+	// Stop the monitoring
 	Stop()
 }
 
