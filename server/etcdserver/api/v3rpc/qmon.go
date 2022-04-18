@@ -79,6 +79,7 @@ type BandwidthMonitor struct {
 	auditOn                      bool
 	throttle                     *rate.Limiter
 	mu                           sync.Mutex
+	server                       *etcdserver.EtcdServer
 }
 
 func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
@@ -93,6 +94,7 @@ func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 	qm.auditThresholdPercent = DefaultAuditThresholdPercent
 	qm.throttle = rate.NewLimiter(rate.Every(time.Second/time.Duration(qm.degradedBandwidthBytesPerSec)), int(qm.burstBytes))
 	qm.budgetExhausted = false
+	qm.server = s
 	return &qm
 }
 
@@ -113,6 +115,8 @@ func (ctrl *BandwidthMonitor) periodicReset() {
 		select {
 		case <-ticker.C:
 			ctrl.update()
+		case <-ctrl.server.StoppingNotify():
+			return
 		}
 	}
 }
