@@ -228,7 +228,7 @@ func (ctrl *BandwidthMonitor) UpdateUsage(req interface{}, resp interface{}) {
 	ctrl.estRespSize.UpdateString(q.qid, q.qsize)
 	if ctrl.auditOn && q.qtype != QueryTypeUnknown {
 		//TODO use the logger passed from server cfg
-		fmt.Printf("Audit Qid: %s Qsize: %d\n", q.qid, q.qsize)
+		//fmt.Printf("Audit Qid: %s Qsize: %d\n", q.qid, q.qsize)
 	}
 }
 
