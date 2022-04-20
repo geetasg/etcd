@@ -136,7 +136,11 @@ func (ctrl *BandwidthMonitor) resetRespSizeUnsafe() {
 }
 
 func (ctrl *BandwidthMonitor) updateAuditFlagUnsafe(rss uint64) {
-	ctrl.auditOn = true
+	if (ctrl.totalMemoryBudget * ctrl.auditThresholdPercent)/100 > uint64(rss) {
+		ctrl.auditOn = true
+	} else {
+		ctrl.auditOn = false
+	}
 }
 
 func (ctrl *BandwidthMonitor) updateBudgetUnsafe(rss uint64) {
