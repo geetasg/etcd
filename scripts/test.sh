@@ -41,9 +41,15 @@ set -o pipefail
 # e.g. add/update missing dependencies. Such divergences should be 
 # detected and trigger a failure that needs explicit developer's action.
 export GOFLAGS=-mod=readonly
+export ETCD_VERIFY=all
 
 source ./scripts/test_lib.sh
 source ./scripts/build.sh
+
+if [ -n "${OUTPUT_FILE}" ]; then
+  log_callout "Dumping output to: ${OUTPUT_FILE}"
+  exec > >(tee -a "${OUTPUT_FILE}") 2>&1
+fi
 
 PASSES=${PASSES:-"fmt bom dep build unit"}
 PKG=${PKG:-}
@@ -107,14 +113,15 @@ function integration_extra {
 }
 
 function integration_pass {
-  local pkgs=${USERPKG:-"./integration/..."}
-  run_for_module "tests" go_test "${pkgs}" "parallel" : -timeout="${TIMEOUT:-15m}" "${COMMON_TEST_FLAGS[@]}" "${RUN_ARG[@]}" "$@" || return $?
+  run_for_module "tests" go_test "./integration/..." "parallel" : -timeout="${TIMEOUT:-15m}" "${COMMON_TEST_FLAGS[@]}" "${RUN_ARG[@]}" -p=2 "$@" || return $?
+  run_for_module "tests" go_test "./common/..." "parallel" : --tags=integration -timeout="${TIMEOUT:-15m}" "${COMMON_TEST_FLAGS[@]}" -p=2 "${RUN_ARG[@]}" "$@" || return $?
   integration_extra "$@"
 }
 
 function e2e_pass {
   # e2e tests are running pre-build binary. Settings like --race,-cover,-cpu does not have any impact.
   run_for_module "tests" go_test "./e2e/..." "keep_going" : -timeout="${TIMEOUT:-30m}" "${RUN_ARG[@]}" "$@"
+  run_for_module "tests" go_test "./common/..." "keep_going" : --tags=e2e -timeout="${TIMEOUT:-30m}" "${RUN_ARG[@]}" "$@"
 }
 
 function integration_e2e_pass {
@@ -460,7 +467,7 @@ function staticcheck_pass {
 }
 
 function revive_pass {
-  run_for_modules generic_checker run_go_tool "github.com/mgechev/revive" -config "${ETCD_ROOT_DIR}/tests/revive.toml" -exclude "vendor/..."
+  run_for_modules generic_checker run_go_tool "github.com/mgechev/revive" -config "${ETCD_ROOT_DIR}/tests/revive.toml" -exclude "vendor/..." -exclude "out/..."
 }
 
 function unconvert_pass {

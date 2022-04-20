@@ -449,14 +449,18 @@ func (rc *raftNode) serveChannels() {
 
 		// store raft entries to wal, then publish over commit channel
 		case rd := <-rc.node.Ready():
-			rc.wal.Save(rd.HardState, rd.Entries)
+			// Must save the snapshot file and WAL snapshot entry before saving any other entries
+			// or hardstate to ensure that recovery after a snapshot restore is possible.
 			if !raft.IsEmptySnap(rd.Snapshot) {
 				rc.saveSnap(rd.Snapshot)
+			}
+			rc.wal.Save(rd.HardState, rd.Entries)
+			if !raft.IsEmptySnap(rd.Snapshot) {
 				rc.raftStorage.ApplySnapshot(rd.Snapshot)
 				rc.publishSnapshot(rd.Snapshot)
 			}
 			rc.raftStorage.Append(rd.Entries)
-			rc.transport.Send(rd.Messages)
+			rc.transport.Send(rc.processMessages(rd.Messages))
 			applyDoneC, ok := rc.publishEntries(rc.entriesToApply(rd.CommittedEntries))
 			if !ok {
 				rc.stop()
@@ -474,6 +478,18 @@ func (rc *raftNode) serveChannels() {
 			return
 		}
 	}
+}
+
+// When there is a `raftpb.EntryConfChange` after creating the snapshot,
+// then the confState included in the snapshot is out of date. so We need
+// to update the confState before sending a snapshot to a follower.
+func (rc *raftNode) processMessages(ms []raftpb.Message) []raftpb.Message {
+	for i := 0; i < len(ms); i++ {
+		if ms[i].Type == raftpb.MsgSnap {
+			ms[i].Snapshot.Metadata.ConfState = rc.confState
+		}
+	}
+	return ms
 }
 
 func (rc *raftNode) serveRaft() {

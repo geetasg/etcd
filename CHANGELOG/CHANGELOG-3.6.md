@@ -11,23 +11,28 @@ See [code changes](https://github.com/etcd-io/etcd/compare/v3.5.0...v3.6.0).
 ### Breaking Changes
 
 - `etcd` will no longer start on data dir created by newer versions (for example etcd v3.6 will not run on v3.7+ data dir). To downgrade data dir please check out `etcdutl migrate` command.
+- `etcd` doesn't support serving client requests on the peer listen endpoints (--listen-peer-urls). See [pull/13565](https://github.com/etcd-io/etcd/pull/13565).
 
 ### Deprecations
 
 - Deprecated [V2 discovery](https://etcd.io/docs/v3.5/dev-internal/discovery_protocol/).
+- Removed [etcdctl defrag --data-dir](https://github.com/etcd-io/etcd/pull/13793).
+- Removed [etcdctl snapshot status](https://github.com/etcd-io/etcd/pull/13809).
+- Removed [etcdctl snapshot restore](https://github.com/etcd-io/etcd/pull/13809).
+- Removed [etcdutl snapshot save](https://github.com/etcd-io/etcd/pull/13809).
+
 
 ### etcdctl v3
 
 - Add command to generate [shell completion](https://github.com/etcd-io/etcd/pull/13133).
 - When print endpoint status, [show db size in use](https://github.com/etcd-io/etcd/pull/13639)
+- [Always print the raft_term in decimal](https://github.com/etcd-io/etcd/pull/13711) when displaying member list in json.
+- [Add one more field `storageVersion`](https://github.com/etcd-io/etcd/pull/13773) into the response of command `etcdctl endpoint status`.
 
 ### etcdutl v3
 
 - Add command to generate [shell completion](https://github.com/etcd-io/etcd/pull/13142).
 - Add `migrate` command for downgrading/upgrading etcd data dir files.
-
-### package `client/pkg/v3`
-- [Trim the suffix dot from the target](https://github.com/etcd-io/etcd/pull/13712) in SRV records returned by DNS lookup
 
 ### Package `server`
 
@@ -54,6 +59,11 @@ See [code changes](https://github.com/etcd-io/etcd/compare/v3.5.0...v3.6.0).
 - Fix [etcd gateway doesn't format the endpoint of IPv6 address correctly](https://github.com/etcd-io/etcd/pull/13551)
 - Fix [A client can cause a nil dereference in etcd by passing an invalid SortTarget](https://github.com/etcd-io/etcd/pull/13555)
 - Fix [Grant lease with negative ID can possibly cause db out of sync](https://github.com/etcd-io/etcd/pull/13676)
+- Fix [segmentation violation(SIGSEGV) error due to premature unlocking of watchableStore](https://github.com/etcd-io/etcd/pull/13505)
+- Fix [inconsistent log format](https://github.com/etcd-io/etcd/pull/13864)
+- Fix [Inconsistent revision and data occurs](https://github.com/etcd-io/etcd/pull/13854)
+- Fix [Etcdserver is still in progress of processing LeaseGrantRequest when it receives a LeaseKeepAliveRequest on the same leaseID](https://github.com/etcd-io/etcd/pull/13690)
+- Fix [consistent_index coming from snapshot is overwritten by the old local value](https://github.com/etcd-io/etcd/pull/13930)
 
 ### tools/benchmark
 
@@ -64,6 +74,9 @@ See [code changes](https://github.com/etcd-io/etcd/compare/v3.5.0...v3.6.0).
 See [List of metrics](https://etcd.io/docs/latest/metrics/) for all metrics per release.
 
 - Add [`etcd_disk_defrag_inflight`](https://github.com/etcd-io/etcd/pull/13371).
+
+### Go
+- Compile with [Go 1.17+](https://golang.org/doc/devel/release.html#go1.17)
 
 ### Other
 

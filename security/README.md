@@ -6,7 +6,7 @@ Join the [etcd-dev](https://groups.google.com/forum/?hl=en#!forum/etcd-dev) grou
 
 We’re extremely grateful for security researchers and users that report vulnerabilities to the etcd Open Source Community. All reports are thoroughly investigated by a dedicated committee of community volunteers called [Product Security Committee](security-release-process.md#product-security-committee).
 
-To make a report, please email the private [security@etcd.io](mailto:security@etcd.io) list with the security details and the details expected for [all etcd bug reports](https://etcd.io/docs/latest/reporting_bugs/).
+To make a report, please email the private [security@etcd.io](mailto:security@etcd.io) list with the security details and the details expected for [all etcd bug reports](https://github.com/etcd-io/etcd/blob/main/Documentation/contributor-guide/reporting_bugs.md).
 
 ### When Should I Report a Vulnerability?
 
@@ -35,6 +35,7 @@ A public disclosure date is negotiated by the etcd Product Security Committee an
 ## Security Audit
 
 A third party security audit was performed by Trail of Bits, find the full report [here](SECURITY_AUDIT.pdf).
+A third party fuzzing audit was performed by Ada Logics, find the full report [here](FUZZING_AUDIT_2022.pdf).
 
 ## Private Distributor List
 

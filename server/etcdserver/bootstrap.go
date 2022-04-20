@@ -231,7 +231,7 @@ func bootstrapBackend(cfg config.ServerConfig, haveWAL bool, st v2store.Store, s
 		}
 	}
 	if beExist {
-		err = schema.Validate(cfg.Logger, be.BatchTx())
+		err = schema.Validate(cfg.Logger, be.ReadTx())
 		if err != nil {
 			cfg.Logger.Error("Failed to validate schema", zap.Error(err))
 			return nil, err
@@ -298,7 +298,7 @@ func bootstrapExistingClusterNoWAL(cfg config.ServerConfig, prt http.RoundTrippe
 	if err := membership.ValidateClusterAndAssignIDs(cfg.Logger, cl, existingCluster); err != nil {
 		return nil, fmt.Errorf("error validating peerURLs %s: %v", existingCluster, err)
 	}
-	if !isCompatibleWithCluster(cfg.Logger, cl, cl.MemberByName(cfg.Name).ID, prt) {
+	if !isCompatibleWithCluster(cfg.Logger, cl, cl.MemberByName(cfg.Name).ID, prt, cfg.ReqTimeout()) {
 		return nil, fmt.Errorf("incompatible with current running cluster")
 	}
 	scaleUpLearners := false
@@ -329,10 +329,12 @@ func bootstrapNewClusterNoWAL(cfg config.ServerConfig, prt http.RoundTripper) (*
 	}
 	if cfg.ShouldDiscover() {
 		var str string
-		if cfg.EnableV2Discovery {
+		if cfg.DiscoveryURL != "" {
+			cfg.Logger.Warn("V2 discovery is deprecated!")
 			str, err = v2discovery.JoinCluster(cfg.Logger, cfg.DiscoveryURL, cfg.DiscoveryProxy, m.ID, cfg.InitialPeerURLsMap.String())
 		} else {
-			str, err = v3discovery.JoinCluster(cfg.Logger, cfg.DiscoveryURL, &cfg.DiscoveryCfg, m.ID, cfg.InitialPeerURLsMap.String())
+			cfg.Logger.Info("Bootstrapping cluster using v3 discovery.")
+			str, err = v3discovery.JoinCluster(cfg.Logger, &cfg.DiscoveryCfg, m.ID, cfg.InitialPeerURLsMap.String())
 		}
 		if err != nil {
 			return nil, &DiscoveryError{Op: "join", Err: err}

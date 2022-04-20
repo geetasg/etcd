@@ -18,18 +18,15 @@ package v3discovery
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 
 	"math"
-	"net/url"
 	"path"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"go.etcd.io/etcd/client/pkg/v3/transport"
 	"go.etcd.io/etcd/client/pkg/v3/types"
 	"go.etcd.io/etcd/client/v3"
 
@@ -56,21 +53,8 @@ var (
 )
 
 type DiscoveryConfig struct {
-	Url string `json:"discovery"`
-
-	DialTimeout      time.Duration `json:"discovery-dial-timeout"`
-	RequestTimeOut   time.Duration `json:"discovery-request-timeout"`
-	KeepAliveTime    time.Duration `json:"discovery-keepalive-time"`
-	KeepAliveTimeout time.Duration `json:"discovery-keepalive-timeout"`
-
-	InsecureTransport  bool   `json:"discovery-insecure-transport"`
-	InsecureSkipVerify bool   `json:"discovery-insecure-skip-tls-verify"`
-	CertFile           string `json:"discovery-cert"`
-	KeyFile            string `json:"discovery-key"`
-	TrustedCAFile      string `json:"discovery-cacert"`
-
-	User     string `json:"discovery-user"`
-	Password string `json:"discovery-password"`
+	clientv3.ConfigSpec `json:"client"`
+	Token               string `json:"token"`
 }
 
 type memberInfo struct {
@@ -91,18 +75,18 @@ type clusterInfo struct {
 }
 
 // key prefix for each cluster: "/_etcd/registry/<ClusterToken>".
-func geClusterKeyPrefix(cluster string) string {
+func getClusterKeyPrefix(cluster string) string {
 	return path.Join(discoveryPrefix, cluster)
 }
 
 // key format for cluster size: "/_etcd/registry/<ClusterToken>/_config/size".
-func geClusterSizeKey(cluster string) string {
-	return path.Join(geClusterKeyPrefix(cluster), "_config/size")
+func getClusterSizeKey(cluster string) string {
+	return path.Join(getClusterKeyPrefix(cluster), "_config/size")
 }
 
 // key prefix for each member: "/_etcd/registry/<ClusterToken>/members".
 func getMemberKeyPrefix(clusterToken string) string {
-	return path.Join(geClusterKeyPrefix(clusterToken), "members")
+	return path.Join(getClusterKeyPrefix(clusterToken), "members")
 }
 
 // key format for each member: "/_etcd/registry/<ClusterToken>/members/<memberId>".
@@ -110,10 +94,10 @@ func getMemberKey(cluster, memberId string) string {
 	return path.Join(getMemberKeyPrefix(cluster), memberId)
 }
 
-// GetCluster will connect to the discovery service at the given url and
+// GetCluster will connect to the discovery service at the given endpoints and
 // retrieve a string describing the cluster
-func GetCluster(lg *zap.Logger, dUrl string, cfg *DiscoveryConfig) (cs string, rerr error) {
-	d, err := newDiscovery(lg, dUrl, cfg, 0)
+func GetCluster(lg *zap.Logger, cfg *DiscoveryConfig) (cs string, rerr error) {
+	d, err := newDiscovery(lg, cfg, 0)
 	if err != nil {
 		return "", err
 	}
@@ -137,15 +121,15 @@ func GetCluster(lg *zap.Logger, dUrl string, cfg *DiscoveryConfig) (cs string, r
 	return d.getCluster()
 }
 
-// JoinCluster will connect to the discovery service at the given url, and
+// JoinCluster will connect to the discovery service at the endpoints, and
 // register the server represented by the given id and config to the cluster.
 // The parameter `config` is supposed to be in the format "memberName=peerURLs",
 // such as "member1=http://127.0.0.1:2380".
 //
 // The final returned string has the same format as "--initial-cluster", such as
 // "infra1=http://127.0.0.1:12380,infra2=http://127.0.0.1:22380,infra3=http://127.0.0.1:32380".
-func JoinCluster(lg *zap.Logger, durl string, cfg *DiscoveryConfig, id types.ID, config string) (cs string, rerr error) {
-	d, err := newDiscovery(lg, durl, cfg, id)
+func JoinCluster(lg *zap.Logger, cfg *DiscoveryConfig, id types.ID, config string) (cs string, rerr error) {
+	d, err := newDiscovery(lg, cfg, id)
 	if err != nil {
 		return "", err
 	}
@@ -175,26 +159,19 @@ type discovery struct {
 	memberId     types.ID
 	c            *clientv3.Client
 	retries      uint
-	durl         string
 
 	cfg *DiscoveryConfig
 
 	clock clockwork.Clock
 }
 
-func newDiscovery(lg *zap.Logger, durl string, dcfg *DiscoveryConfig, id types.ID) (*discovery, error) {
+func newDiscovery(lg *zap.Logger, dcfg *DiscoveryConfig, id types.ID) (*discovery, error) {
 	if lg == nil {
 		lg = zap.NewNop()
 	}
-	u, err := url.Parse(durl)
-	if err != nil {
-		return nil, err
-	}
-	token := u.Path
-	u.Path = ""
 
-	lg = lg.With(zap.String("discovery-url", durl))
-	cfg, err := newClientCfg(dcfg, u.String(), lg)
+	lg = lg.With(zap.String("discovery-token", dcfg.Token), zap.String("discovery-endpoints", strings.Join(dcfg.Endpoints, ",")))
+	cfg, err := clientv3.NewClientConfig(&dcfg.ConfigSpec, lg)
 	if err != nil {
 		return nil, err
 	}
@@ -205,60 +182,12 @@ func newDiscovery(lg *zap.Logger, durl string, dcfg *DiscoveryConfig, id types.I
 	}
 	return &discovery{
 		lg:           lg,
-		clusterToken: token,
+		clusterToken: dcfg.Token,
 		memberId:     id,
 		c:            c,
-		durl:         u.String(),
 		cfg:          dcfg,
 		clock:        clockwork.NewRealClock(),
 	}, nil
-}
-
-// The following function follows the same logic as etcdctl, refer to
-// https://github.com/etcd-io/etcd/blob/f9a8c49c695b098d66a07948666664ea10d01a82/etcdctl/ctlv3/command/global.go#L191-L250
-func newClientCfg(dcfg *DiscoveryConfig, dUrl string, lg *zap.Logger) (*clientv3.Config, error) {
-	var cfgtls *transport.TLSInfo
-
-	if dcfg.CertFile != "" || dcfg.KeyFile != "" || dcfg.TrustedCAFile != "" {
-		cfgtls = &transport.TLSInfo{
-			CertFile:      dcfg.CertFile,
-			KeyFile:       dcfg.KeyFile,
-			TrustedCAFile: dcfg.TrustedCAFile,
-			Logger:        lg,
-		}
-	}
-
-	cfg := &clientv3.Config{
-		Endpoints:            []string{dUrl},
-		DialTimeout:          dcfg.DialTimeout,
-		DialKeepAliveTime:    dcfg.KeepAliveTime,
-		DialKeepAliveTimeout: dcfg.KeepAliveTimeout,
-		Username:             dcfg.User,
-		Password:             dcfg.Password,
-	}
-
-	if cfgtls != nil {
-		if clientTLS, err := cfgtls.ClientConfig(); err == nil {
-			cfg.TLS = clientTLS
-		} else {
-			return nil, err
-		}
-	}
-
-	// If key/cert is not given but user wants secure connection, we
-	// should still setup an empty tls configuration for gRPC to setup
-	// secure connection.
-	if cfg.TLS == nil && !dcfg.InsecureTransport {
-		cfg.TLS = &tls.Config{}
-	}
-
-	// If the user wants to skip TLS verification then we should set
-	// the InsecureSkipVerify flag in tls configuration.
-	if cfg.TLS != nil && dcfg.InsecureSkipVerify {
-		cfg.TLS.InsecureSkipVerify = true
-	}
-
-	return cfg, nil
 }
 
 func (d *discovery) getCluster() (string, error) {
@@ -300,8 +229,8 @@ func (d *discovery) joinCluster(config string) (string, error) {
 }
 
 func (d *discovery) getClusterSize() (int, error) {
-	configKey := geClusterSizeKey(d.clusterToken)
-	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.RequestTimeOut)
+	configKey := getClusterSizeKey(d.clusterToken)
+	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.RequestTimeout)
 	defer cancel()
 
 	resp, err := d.c.Get(ctx, configKey)
@@ -328,7 +257,7 @@ func (d *discovery) getClusterSize() (int, error) {
 
 func (d *discovery) getClusterMembers() (*clusterInfo, int64, error) {
 	membersKeyPrefix := getMemberKeyPrefix(d.clusterToken)
-	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.RequestTimeOut)
+	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.RequestTimeout)
 	defer cancel()
 
 	resp, err := d.c.Get(ctx, membersKeyPrefix, clientv3.WithPrefix())
@@ -412,7 +341,7 @@ func (d *discovery) registerSelfRetry(contents string) error {
 }
 
 func (d *discovery) registerSelf(contents string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.RequestTimeOut)
+	ctx, cancel := context.WithTimeout(context.Background(), d.cfg.RequestTimeout)
 	memberKey := getMemberKey(d.clusterToken, d.memberId.String())
 	_, err := d.c.Put(ctx, memberKey, contents)
 	cancel()
