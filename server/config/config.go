@@ -200,6 +200,18 @@ type ServerConfig struct {
 
 	// V2Deprecation defines a phase of v2store deprecation process.
 	V2Deprecation V2DeprecationEnum `json:"v2-deprecation"`
+
+	// ExperimentalQmonEnableBandwidthThrottle enables query monitor to do memory pressure aware bandwidth throttling.
+	ExperimentalQmonEnableBandwidthThrottle bool
+
+	// ExperimentalQmonMemoryBudgetMegabytes is the total memory budget for the process. Throttle will begin if the processes exceeds this.
+	ExperimentalQmonMemoryBudgetMegabytes uint
+
+	// ExperimentalQmonThrottleBandwidthMBPS is the bandwidth at which the requests are throttled when memory pressure is detected
+	ExperimentalQmonThrottleBandwidthMBPS uint
+
+	// ExperimentalQmonEvalInterval indicates the interval at which memory pressure is evaluated
+	ExperimentalQmonEvalInterval time.Duration
 }
 
 // VerifyBootstrap sanity-checks the initial config for bootstrap case

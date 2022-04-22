@@ -413,6 +413,18 @@ type Config struct {
 
 	// V2Deprecation describes phase of API & Storage V2 support
 	V2Deprecation config.V2DeprecationEnum `json:"v2-deprecation"`
+
+	// ExperimentalQmonEnableBandwidthThrottle indicates if experimental query monitor to do memory pressure aware bandwidth throttling is enabled.
+	ExperimentalQmonEnableBandwidthThrottle bool `json:"experimental-qmon-enable-bandwidth-throttle"`
+
+	// ExperimentalQmonMemoryBudgetMegabytes is the total memory budget for the process. Throttle will begin if the processes exceeds this.
+	ExperimentalQmonMemoryBudgetMegabytes uint `json:"experimental-qmon-memory-budget"`
+
+	// ExperimentalQmonThrottleBandwidthMBPS is the bandwidth at which the requests are throttled when memory pressure is detected
+	ExperimentalQmonThrottleBandwidthMBPS uint `json:"experimental-qmon-throttle-bandwidth-MBPS"`
+
+	// ExperimentalQmonEvalInterval indicates the interval at which memory pressure is evaluated
+	ExperimentalQmonEvalInterval time.Duration `json:"experimental-qmon-eval-interval"`
 }
 
 // configYAML holds the config suitable for yaml parsing
@@ -743,6 +755,8 @@ func (cfg *Config) Validate() error {
 			return fmt.Errorf("distributed tracing configurition is not valid: (%v)", err)
 		}
 	}
+
+	//TODO validate qmon config
 
 	if !cfg.ExperimentalEnableLeaseCheckpointPersist && cfg.ExperimentalEnableLeaseCheckpoint {
 		cfg.logger.Warn("Detected that checkpointing is enabled without persistence. Consider enabling experimental-enable-lease-checkpoint-persist")

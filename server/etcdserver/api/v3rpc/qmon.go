@@ -85,10 +85,19 @@ type BandwidthMonitor struct {
 func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 	var qm BandwidthMonitor
 	qm.totalMemoryBudget = DefaultTotalMemoryBudget
+	if s.Cfg.ExperimentalQmonMemoryBudgetMegabytes != 0 {
+		qm.totalMemoryBudget = uint64(s.Cfg.ExperimentalQmonMemoryBudgetMegabytes)
+	}
 	qm.defaultRespSize = DefaultRespSize
 	qm.degradedBandwidthBytesPerSec = DefaultDegradedBandwidthBytesPerSec
+	if s.Cfg.ExperimentalQmonThrottleBandwidthMBPS != 0 {
+		qm.degradedBandwidthBytesPerSec = uint64(s.Cfg.ExperimentalQmonThrottleBandwidthMBPS)
+	}
 	qm.burstBytes = DefaultBurstBytes
 	qm.resetTimer = DefaultResetTimer
+	if s.Cfg.ExperimentalQmonEvalInterval != 0 {
+		qm.resetTimer = s.Cfg.ExperimentalQmonEvalInterval
+	}
 	qm.estRespSize, _ = adt.NewWithEstimates(0.0001, 0.9999)
 	qm.auditOn = false
 	qm.auditThresholdPercent = DefaultAuditThresholdPercent

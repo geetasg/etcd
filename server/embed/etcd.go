@@ -220,6 +220,10 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		ExperimentalBootstrapDefragThresholdMegabytes: cfg.ExperimentalBootstrapDefragThresholdMegabytes,
 		ExperimentalMaxLearners:                       cfg.ExperimentalMaxLearners,
 		V2Deprecation:                                 cfg.V2DeprecationEffective(),
+		ExperimentalQmonEnableBandwidthThrottle:       cfg.ExperimentalQmonEnableBandwidthThrottle,
+		ExperimentalQmonMemoryBudgetMegabytes:         cfg.ExperimentalQmonMemoryBudgetMegabytes,
+		ExperimentalQmonThrottleBandwidthMBPS:         cfg.ExperimentalQmonThrottleBandwidthMBPS,
+		ExperimentalQmonEvalInterval:                  cfg.ExperimentalQmonEvalInterval,
 	}
 
 	if srvcfg.ExperimentalEnableDistributedTracing {
