@@ -20,6 +20,7 @@ import (
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	adt "go.etcd.io/etcd/pkg/v3/adt"
 	"go.etcd.io/etcd/server/v3/etcdserver"
+	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	"io/ioutil"
 	"os"
@@ -131,8 +132,11 @@ func (ctrl *BandwidthMonitor) periodicReset() {
 }
 
 func (ctrl *BandwidthMonitor) update() {
-	//TODO err handling
-	rss := getCurrentRssBytes()
+	rss := getCurrentRssBytes(ctrl.server.Cfg.Logger)
+	if rss == 0 {
+		ctrl.server.Cfg.Logger.Error("qmon: unexpected condition rss is zero.")
+		return
+	}
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
 	ctrl.resetRespSizeUnsafe()
@@ -181,20 +185,19 @@ func (ctrl *BandwidthMonitor) isDeclinedHelper(q Query) (bool, uint64) {
 	return false, respSize
 }
 
-func (ctrl *BandwidthMonitor) newQuery(req interface{}, resp interface{}) Query {
+func (ctrl *BandwidthMonitor) newQueryFromReqResp(req interface{}, resp interface{}) Query {
 	var reqSize, respSize int
 	var reqContent string
 	qtype := QueryTypeUnknown
 	switch _resp := resp.(type) {
 	case *pb.RangeResponse:
-		//TODO verify status is 200
 		_req, ok := req.(*pb.RangeRequest)
 		if ok {
 			reqSize = _req.Size()
 			reqContent = _req.String()
 			qtype = QueryTypeRange
 		}
-		if _resp != nil {
+		if _resp != nil && _resp.Count != 0 {
 			respSize = _resp.Size()
 		}
 	default:
@@ -231,13 +234,12 @@ func (ctrl *BandwidthMonitor) newQRange(r *pb.RangeRequest) Query {
 }
 
 func (ctrl *BandwidthMonitor) UpdateUsage(req interface{}, resp interface{}) {
-	q := ctrl.newQuery(req, resp)
+	q := ctrl.newQueryFromReqResp(req, resp)
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
 	ctrl.estRespSize.UpdateString(q.qid, q.qsize)
 	if ctrl.auditOn && q.qtype != QueryTypeUnknown {
-		//TODO use the logger passed from server cfg
-		//fmt.Printf("Audit Qid: %s Qsize: %d\n", q.qid, q.qsize)
+		ctrl.server.Cfg.Logger.Warn("qmon audit.", zap.String("qid", q.qid), zap.Uint64("qsize", q.qsize))
 	}
 }
 
@@ -247,7 +249,7 @@ func (ctrl *BandwidthMonitor) AdmitReq(req interface{}) bool {
 	if qsize > SmallReqThreshold && declined {
 		err := ctrl.throttle.WaitN(context.TODO(), int(qsize))
 		if err != nil {
-			fmt.Printf("Throttled failed. Reject.%s\n", err)
+			ctrl.server.Cfg.Logger.Warn("qmon throttle rejecting request.", zap.Error(err), zap.String("qid", q.qid))
 			return false
 		}
 	}
@@ -264,24 +266,24 @@ func (ctrl *BandwidthMonitor) Stop() {
 }
 
 //TODO windows
-func getCurrentRssBytes() uint64 {
+func getCurrentRssBytes(logger *zap.Logger) uint64 {
 	pid := os.Getpid()
 	statm := fmt.Sprintf("/proc/%d/statm", pid)
 	buf, err := ioutil.ReadFile(statm)
 	if err != nil {
-		fmt.Printf("Failed to read: %s err:%s\n", statm, err)
+		logger.Error("qmon failed to read statm file", zap.String("statm file", statm), zap.Error(err))
 		return 0
 	}
 
 	fields := strings.Split(string(buf), " ")
 	if len(fields) < 2 {
-		fmt.Printf("Failed to parse: %s \n", statm)
+		logger.Error("qmon failed to parse statm file", zap.String("statm file", statm), zap.String("buff", string(buf)))
 		return 0
 	}
 
 	rss, err := strconv.ParseUint(fields[1], 10, 64)
 	if err != nil {
-		fmt.Printf("getCurrentRssBytes:cannot convert to int: err:%s\n", err)
+		logger.Error("qmon cannot convert rss to int", zap.String("statm file", statm), zap.Error(err))
 		return 0
 	}
 
