@@ -33,12 +33,14 @@ import (
 
 const (
 	DefaultTotalMemoryBudget            = 1 * 1024 * 1024 * 1024
+	MegaByte                            = 1 * 1024 * 1024
 	DefaultDegradedBandwidthBytesPerSec = 64 * 1024 * 1024
-	DefaultBurstBytes                   = 64 * 1024 * 1024
-	DefaultRespSize                     = 4 * 1024 * 1024
+	DefaultBurstBytes                   = 128 * 1024 * 1024
+	DefaultRespSize                     = 64 * 1024 * 1024
 	DefaultResetTimer                   = 10 * time.Second
 	DefaultAuditThresholdPercent        = 50
 	SmallReqThreshold                   = 4 * 1024
+	DefaultEstInterval                  = 5 * time.Minute
 )
 
 type QueryType int64
@@ -76,6 +78,8 @@ type BandwidthMonitor struct {
 	budgetExhausted              bool
 	resetTimer                   time.Duration
 	estRespSize                  *adt.CountMinSketch
+	respSizeUpdateTime           time.Time
+	estimateUpdateInterval       time.Duration
 	auditThresholdPercent        uint64
 	auditOn                      bool
 	throttle                     *rate.Limiter
@@ -87,7 +91,7 @@ func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 	var qm BandwidthMonitor
 	qm.totalMemoryBudget = DefaultTotalMemoryBudget
 	if s.Cfg.ExperimentalQmonMemoryBudgetMegabytes != 0 {
-		qm.totalMemoryBudget = uint64(s.Cfg.ExperimentalQmonMemoryBudgetMegabytes)
+		qm.totalMemoryBudget = uint64(s.Cfg.ExperimentalQmonMemoryBudgetMegabytes) * MegaByte
 	}
 	qm.defaultRespSize = DefaultRespSize
 	qm.degradedBandwidthBytesPerSec = DefaultDegradedBandwidthBytesPerSec
@@ -100,6 +104,8 @@ func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 		qm.resetTimer = s.Cfg.ExperimentalQmonEvalInterval
 	}
 	qm.estRespSize, _ = adt.NewWithEstimates(0.0001, 0.9999)
+	qm.respSizeUpdateTime = time.Now()
+	qm.estimateUpdateInterval = DefaultEstInterval
 	qm.auditOn = false
 	qm.auditThresholdPercent = DefaultAuditThresholdPercent
 	qm.throttle = rate.NewLimiter(rate.Every(time.Second/time.Duration(qm.degradedBandwidthBytesPerSec)), int(qm.burstBytes))
@@ -145,7 +151,11 @@ func (ctrl *BandwidthMonitor) update() {
 }
 
 func (ctrl *BandwidthMonitor) resetRespSizeUnsafe() {
-	ctrl.estRespSize, _ = adt.NewWithEstimates(0.0001, 0.9999)
+	if time.Since(ctrl.respSizeUpdateTime) > ctrl.estimateUpdateInterval {
+		ctrl.server.Cfg.Logger.Info("qmon: clearing estimates.")
+		ctrl.estRespSize, _ = adt.NewWithEstimates(0.0001, 0.9999)
+		ctrl.respSizeUpdateTime = time.Now()
+	}
 }
 
 func (ctrl *BandwidthMonitor) updateAuditFlagUnsafe(rss uint64) {
