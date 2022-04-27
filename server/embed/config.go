@@ -418,7 +418,7 @@ type Config struct {
 	ExperimentalQmonEnableBandwidthThrottle bool `json:"experimental-qmon-enable-bandwidth-throttle"`
 
 	// ExperimentalQmonMemoryBudgetMegabytes is the total memory budget for the process. Throttle will begin if the processes exceeds this.
-	ExperimentalQmonMemoryBudgetMegabytes uint `json:"experimental-qmon-memory-budget"`
+	ExperimentalQmonMemoryBudgetMegabytes uint `json:"experimental-qmon-memory-budget-megabytes"`
 
 	// ExperimentalQmonThrottleBandwidthMBPS is the bandwidth at which the requests are throttled when memory pressure is detected
 	ExperimentalQmonThrottleBandwidthMBPS uint `json:"experimental-qmon-throttle-bandwidth-MBPS"`

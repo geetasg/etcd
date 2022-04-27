@@ -24,7 +24,7 @@ import (
 	"golang.org/x/time/rate"
 	"io/ioutil"
 	"os"
-	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,8 +35,8 @@ const (
 	DefaultTotalMemoryBudget            = 1 * 1024 * 1024 * 1024
 	DefaultDegradedBandwidthBytesPerSec = 64 * 1024 * 1024
 	DefaultBurstBytes                   = 64 * 1024 * 1024
-	DefaultRespSize                     = 64 * 1024
-	DefaultResetTimer                   = 1 * time.Minute
+	DefaultRespSize                     = 4 * 1024 * 1024
+	DefaultResetTimer                   = 10 * time.Second
 	DefaultAuditThresholdPercent        = 50
 	SmallReqThreshold                   = 4 * 1024
 )
@@ -159,13 +159,14 @@ func (ctrl *BandwidthMonitor) updateAuditFlagUnsafe(rss uint64) {
 func (ctrl *BandwidthMonitor) updateBudgetUnsafe(rss uint64) {
 	if ctrl.totalMemoryBudget <= uint64(rss) {
 		ctrl.budgetExhausted = true
-		runtime.GC()
+		debug.FreeOSMemory()
+		ctrl.server.Cfg.Logger.Warn("qmon: Running FreeOSMemory.")
 	} else {
 		ctrl.budgetExhausted = false
 	}
 }
 
-func (ctrl *BandwidthMonitor) isDeclinedHelper(q Query) (bool, uint64) {
+func (ctrl *BandwidthMonitor) isDeclinedUnsafe(q Query) (bool, uint64) {
 	respSize := q.qsize
 	if q.qtype == QueryTypeRange {
 		respSize = ctrl.estRespSize.EstimateString(q.qid)
@@ -247,6 +248,7 @@ func (ctrl *BandwidthMonitor) AdmitReq(req interface{}) bool {
 	q := ctrl.newQueryFromReq(req)
 	declined, qsize := ctrl.isDeclined(q)
 	if qsize > SmallReqThreshold && declined {
+		ctrl.server.Cfg.Logger.Warn("qmon throttling request.", zap.String("qid", q.qid), zap.Uint64("respsize", qsize))
 		err := ctrl.throttle.WaitN(context.TODO(), int(qsize))
 		if err != nil {
 			ctrl.server.Cfg.Logger.Warn("qmon throttle rejecting request.", zap.Error(err), zap.String("qid", q.qid))
@@ -259,7 +261,7 @@ func (ctrl *BandwidthMonitor) AdmitReq(req interface{}) bool {
 func (ctrl *BandwidthMonitor) isDeclined(q Query) (bool, uint64) {
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
-	return ctrl.isDeclinedHelper(q)
+	return ctrl.isDeclinedUnsafe(q)
 }
 
 func (ctrl *BandwidthMonitor) Stop() {
