@@ -35,7 +35,7 @@ const (
 	DefaultTotalMemoryBudget            = 1 * 1024 * 1024 * 1024
 	MegaByte                            = 1 * 1024 * 1024
 	DefaultDegradedBandwidthBytesPerSec = 64 * 1024 * 1024
-	DefaultBurstBytes                   = 128 * 1024 * 1024
+	DefaultBurstBytes                   = 64 * 1024 * 1024
 	DefaultRespSize                     = 4 * 1024 * 1024
 	DefaultResetTimer                   = 10 * time.Second
 	DefaultAuditThresholdPercent        = 50
