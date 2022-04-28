@@ -40,6 +40,7 @@ const (
 	DefaultResetTimer                   = 10 * time.Second
 	DefaultAuditThresholdPercent        = 50
 	SmallReqThreshold                   = 4 * 1024
+	LargeReqThreshold                   = 32 * 1024 * 1024
 	DefaultEstInterval                  = 10 * time.Minute
 )
 
@@ -171,7 +172,7 @@ func (ctrl *BandwidthMonitor) updateAuditFlagUnsafe(rss uint64) {
 }
 
 func (ctrl *BandwidthMonitor) updateBudgetUnsafe(rss uint64) {
-	if ctrl.totalMemoryBudget <= uint64(rss) {
+	if ctrl.totalMemoryBudget/2 <= uint64(rss) {
 		ctrl.budgetExhausted = true
 		debug.FreeOSMemory()
 		ctrl.server.Cfg.Logger.Warn("qmon: Running FreeOSMemory.")
@@ -196,6 +197,12 @@ func (ctrl *BandwidthMonitor) isDeclinedUnsafe(q Query) (bool, uint64, uint64) {
 	}
 	if ctrl.budgetExhausted {
 		//decline
+		return true, respSize, qcount
+	}
+
+	if q.qsize > LargeReqThreshold {
+		//decline
+		//Large requests are always throttled
 		return true, respSize, qcount
 	}
 
@@ -272,12 +279,6 @@ func (ctrl *BandwidthMonitor) AdmitReq(req interface{}) bool {
 	//dont rely on default resp size too much
 	if qcount > 5 && qsize == ctrl.defaultRespSize {
 		ctrl.server.Cfg.Logger.Warn("qmon reject. wait for gc.", zap.String("qid", q.qid), zap.Uint64("qsize", qsize), zap.Uint64("qcount", qcount))
-		return false
-	}
-
-	//we may fail to arm intime if there is a runway query
-	if !declined && qcount * qsize > ctrl.totalMemoryBudget/2 {
-		ctrl.server.Cfg.Logger.Warn("qmon reject too much bw used. wait for gc.", zap.String("qid", q.qid), zap.Uint64("qsize", qsize), zap.Uint64("qcount", qcount))
 		return false
 	}
 
