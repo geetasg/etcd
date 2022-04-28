@@ -34,13 +34,13 @@ import (
 const (
 	DefaultTotalMemoryBudget            = 1 * 1024 * 1024 * 1024
 	MegaByte                            = 1 * 1024 * 1024
-	DefaultDegradedBandwidthBytesPerSec = 64 * 1024 * 1024
-	DefaultBurstBytes                   = 64 * 1024 * 1024
+	DefaultDegradedBandwidthBytesPerSec = 128 * 1024 * 1024
+	DefaultBurstBytes                   = 128 * 1024 * 1024
 	DefaultRespSize                     = 4 * 1024 * 1024
 	DefaultResetTimer                   = 10 * time.Second
 	DefaultAuditThresholdPercent        = 50
 	SmallReqThreshold                   = 4 * 1024
-	DefaultEstInterval                  = 5 * time.Minute
+	DefaultEstInterval                  = 10 * time.Minute
 )
 
 type QueryType int64
@@ -78,6 +78,7 @@ type BandwidthMonitor struct {
 	budgetExhausted              bool
 	resetTimer                   time.Duration
 	estRespSize                  *adt.CountMinSketch
+	qcount                       *adt.CountMinSketch
 	respSizeUpdateTime           time.Time
 	estimateUpdateInterval       time.Duration
 	auditThresholdPercent        uint64
@@ -104,6 +105,7 @@ func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 		qm.resetTimer = s.Cfg.ExperimentalQmonEvalInterval
 	}
 	qm.estRespSize, _ = adt.NewWithEstimates(0.0001, 0.9999)
+	qm.qcount, _ = adt.NewWithEstimates(0.0001, 0.9999)
 	qm.respSizeUpdateTime = time.Now()
 	qm.estimateUpdateInterval = DefaultEstInterval
 	qm.auditOn = false
@@ -111,6 +113,8 @@ func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 	qm.throttle = rate.NewLimiter(rate.Every(time.Second/time.Duration(qm.degradedBandwidthBytesPerSec)), int(qm.burstBytes))
 	qm.budgetExhausted = false
 	qm.server = s
+	//TODO log params
+	qm.server.Cfg.Logger.Warn("qmon - created query monitor.")
 	return &qm
 }
 
@@ -174,10 +178,13 @@ func (ctrl *BandwidthMonitor) updateBudgetUnsafe(rss uint64) {
 	} else {
 		ctrl.budgetExhausted = false
 	}
+	ctrl.qcount, _ = adt.NewWithEstimates(0.0001, 0.9999)
 }
 
-func (ctrl *BandwidthMonitor) isDeclinedUnsafe(q Query) (bool, uint64) {
+func (ctrl *BandwidthMonitor) isDeclinedUnsafe(q Query) (bool, uint64, uint64) {
 	respSize := q.qsize
+	qcount := ctrl.qcount.EstimateString(q.qid)
+	ctrl.qcount.UpdateString(q.qid, qcount+1)
 	if q.qtype == QueryTypeRange {
 		respSize = ctrl.estRespSize.EstimateString(q.qid)
 		if respSize == 0 {
@@ -189,11 +196,11 @@ func (ctrl *BandwidthMonitor) isDeclinedUnsafe(q Query) (bool, uint64) {
 	}
 	if ctrl.budgetExhausted {
 		//decline
-		return true, respSize
+		return true, respSize, qcount
 	}
 
 	//admit
-	return false, respSize
+	return false, respSize, qcount
 }
 
 func (ctrl *BandwidthMonitor) newQueryFromReqResp(req interface{}, resp interface{}) Query {
@@ -249,6 +256,10 @@ func (ctrl *BandwidthMonitor) UpdateUsage(req interface{}, resp interface{}) {
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
 	ctrl.estRespSize.UpdateString(q.qid, q.qsize)
+	qc := ctrl.qcount.EstimateString(q.qid)
+	if qc > 0 {
+		ctrl.qcount.UpdateString(q.qid, qc-1)
+	}
 	if ctrl.auditOn && q.qtype != QueryTypeUnknown {
 		ctrl.server.Cfg.Logger.Warn("qmon audit.", zap.String("qid", q.qid), zap.Uint64("qsize", q.qsize))
 	}
@@ -256,19 +267,24 @@ func (ctrl *BandwidthMonitor) UpdateUsage(req interface{}, resp interface{}) {
 
 func (ctrl *BandwidthMonitor) AdmitReq(req interface{}) bool {
 	q := ctrl.newQueryFromReq(req)
-	declined, qsize := ctrl.isDeclined(q)
+	declined, qsize, qcount := ctrl.isDeclined(q)
+
+	//dont rely on default resp size too much
+	if qcount > 5 && qsize == ctrl.defaultRespSize {
+		ctrl.server.Cfg.Logger.Warn("qmon reject. wait for gc.", zap.String("qid", q.qid), zap.Uint64("qsize", qsize), zap.Uint64("qcount", qcount))
+		return false
+	}
+
 	if qsize > SmallReqThreshold && declined {
-		ctrl.server.Cfg.Logger.Warn("qmon throttling request.", zap.String("qid", q.qid), zap.Uint64("respsize", qsize))
 		err := ctrl.throttle.WaitN(context.TODO(), int(qsize))
 		if err != nil {
-			ctrl.server.Cfg.Logger.Warn("qmon throttle rejecting request.", zap.Error(err), zap.String("qid", q.qid))
 			return false
 		}
 	}
 	return true
 }
 
-func (ctrl *BandwidthMonitor) isDeclined(q Query) (bool, uint64) {
+func (ctrl *BandwidthMonitor) isDeclined(q Query) (bool, uint64, uint64) {
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
 	return ctrl.isDeclinedUnsafe(q)
