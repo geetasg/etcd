@@ -275,6 +275,12 @@ func (ctrl *BandwidthMonitor) AdmitReq(req interface{}) bool {
 		return false
 	}
 
+	//we may fail to arm intime if there is a runway query
+	if !declined && qcount * qsize > ctrl.totalMemoryBudget/2 {
+		ctrl.server.Cfg.Logger.Warn("qmon reject too much bw used. wait for gc.", zap.String("qid", q.qid), zap.Uint64("qsize", qsize), zap.Uint64("qcount", qcount))
+		return false
+	}
+
 	if qsize > SmallReqThreshold && declined {
 		err := ctrl.throttle.WaitN(context.TODO(), int(qsize))
 		if err != nil {
