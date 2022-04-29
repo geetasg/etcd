@@ -61,7 +61,7 @@ type QueryMonitor interface {
 	Start()
 
 	// UpdateUsage : update counters
-	UpdateUsage(req interface{}, resp interface{})
+	UpdateUsage(req interface{}, resp interface{}, err error)
 
 	// AdmitReq : Decide if we can admit the request.
 	AdmitReq(req interface{}) bool
@@ -221,7 +221,7 @@ func (ctrl *BandwidthMonitor) newQueryFromReqResp(req interface{}, resp interfac
 	switch _resp := resp.(type) {
 	case *pb.RangeResponse:
 		_req, ok := req.(*pb.RangeRequest)
-		if ok {
+		if ok && !_req.CountOnly {
 			reqSize = _req.Size()
 			reqContent = _req.String()
 			qtype = QueryTypeRange
@@ -262,7 +262,13 @@ func (ctrl *BandwidthMonitor) newQRange(r *pb.RangeRequest) Query {
 	return q
 }
 
-func (ctrl *BandwidthMonitor) UpdateUsage(req interface{}, resp interface{}) {
+func (ctrl *BandwidthMonitor) UpdateUsage(req interface{}, resp interface{}, err error) {
+
+	//do not update estimate with failure response
+	if err != nil {
+		return
+	}
+
 	q := ctrl.newQueryFromReqResp(req, resp)
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
