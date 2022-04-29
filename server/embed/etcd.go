@@ -222,7 +222,7 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		V2Deprecation:                                 cfg.V2DeprecationEffective(),
 		ExperimentalQmonEnableBandwidthThrottle:       cfg.ExperimentalQmonEnableBandwidthThrottle,
 		ExperimentalQmonMemoryBudgetMegabytes:         cfg.ExperimentalQmonMemoryBudgetMegabytes,
-		ExperimentalQmonThrottleBandwidthMBPS:         cfg.ExperimentalQmonThrottleBandwidthMBPS,
+		ExperimentalQmonThrottleEnableAtPercent:       cfg.ExperimentalQmonThrottleEnableAtPercent,
 		ExperimentalQmonEvalInterval:                  cfg.ExperimentalQmonEvalInterval,
 	}
 

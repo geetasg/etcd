@@ -207,8 +207,8 @@ type ServerConfig struct {
 	// ExperimentalQmonMemoryBudgetMegabytes is the total memory budget for the process. Throttle will begin if the processes exceeds this.
 	ExperimentalQmonMemoryBudgetMegabytes uint
 
-	// ExperimentalQmonThrottleBandwidthMBPS is the bandwidth at which the requests are throttled when memory pressure is detected
-	ExperimentalQmonThrottleBandwidthMBPS uint
+	// ExperimentalQmonThrottleEnableAtPercent - throttle is enabled when rss is this much percent of total memory budget
+	ExperimentalQmonThrottleEnableAtPercent uint
 
 	// ExperimentalQmonEvalInterval indicates the interval at which memory pressure is evaluated
 	ExperimentalQmonEvalInterval time.Duration

@@ -32,16 +32,15 @@ import (
 )
 
 const (
-	DefaultTotalMemoryBudget            = 1 * 1024 * 1024 * 1024
-	MegaByte                            = 1 * 1024 * 1024
-	DefaultDegradedBandwidthBytesPerSec = 128 * 1024 * 1024
-	DefaultBurstBytes                   = 128 * 1024 * 1024
-	DefaultRespSize                     = 4 * 1024 * 1024
-	DefaultResetTimer                   = 10 * time.Second
-	DefaultAuditThresholdPercent        = 50
-	SmallReqThreshold                   = 4 * 1024
-	LargeReqThreshold                   = 32 * 1024 * 1024
-	DefaultEstInterval                  = 10 * time.Minute
+	DefaultTotalMemoryBudget        = 1 * 1024 * 1024 * 1024
+	DefaultThrtottleEnableAtPercent = 50
+	MegaByte                        = 1 * 1024 * 1024
+	DefaultRespSize                 = 4 * 1024 * 1024
+	DefaultResetTimer               = 30 * time.Second
+	DefaultAuditThresholdPercent    = 50
+	SmallReqThreshold               = 4 * 1024
+	LargeReqThreshold               = 32 * 1024 * 1024
+	DefaultEstInterval              = 10 * time.Minute
 )
 
 type QueryType int64
@@ -75,7 +74,8 @@ type BandwidthMonitor struct {
 	totalMemoryBudget            uint64
 	defaultRespSize              uint64
 	degradedBandwidthBytesPerSec uint64
-	burstBytes                   uint64
+	enableAtPercent              uint64
+	enableAtBytes                uint64
 	budgetExhausted              bool
 	resetTimer                   time.Duration
 	estRespSize                  *adt.CountMinSketch
@@ -91,31 +91,41 @@ type BandwidthMonitor struct {
 
 func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 	var qm BandwidthMonitor
+
 	qm.totalMemoryBudget = DefaultTotalMemoryBudget
 	if s.Cfg.ExperimentalQmonMemoryBudgetMegabytes != 0 {
 		qm.totalMemoryBudget = uint64(s.Cfg.ExperimentalQmonMemoryBudgetMegabytes) * MegaByte
 	}
+
+	qm.enableAtPercent = DefaultThrtottleEnableAtPercent
+	if s.Cfg.ExperimentalQmonThrottleEnableAtPercent != 0 {
+		qm.enableAtPercent = uint64(s.Cfg.ExperimentalQmonThrottleEnableAtPercent)
+	}
+	qm.enableAtBytes = qm.totalMemoryBudget * qm.enableAtPercent / 100
+
 	qm.defaultRespSize = DefaultRespSize
-	qm.degradedBandwidthBytesPerSec = DefaultDegradedBandwidthBytesPerSec
-	if s.Cfg.ExperimentalQmonThrottleBandwidthMBPS != 0 {
-		qm.degradedBandwidthBytesPerSec = uint64(s.Cfg.ExperimentalQmonThrottleBandwidthMBPS)
-	}
-	qm.burstBytes = DefaultBurstBytes
 	qm.resetTimer = DefaultResetTimer
-	if s.Cfg.ExperimentalQmonEvalInterval != 0 {
-		qm.resetTimer = s.Cfg.ExperimentalQmonEvalInterval
-	}
+
+	remaining := qm.totalMemoryBudget - qm.enableAtBytes
+	timeToGC := uint64(qm.resetTimer / time.Second)
+	bw := remaining / timeToGC
+	qm.degradedBandwidthBytesPerSec = bw
+
 	qm.estRespSize, _ = adt.NewWithEstimates(0.0001, 0.9999)
 	qm.qcount, _ = adt.NewWithEstimates(0.0001, 0.9999)
 	qm.respSizeUpdateTime = time.Now()
 	qm.estimateUpdateInterval = DefaultEstInterval
 	qm.auditOn = false
 	qm.auditThresholdPercent = DefaultAuditThresholdPercent
-	qm.throttle = rate.NewLimiter(rate.Every(time.Second/time.Duration(qm.degradedBandwidthBytesPerSec)), int(qm.burstBytes))
+	qm.throttle = rate.NewLimiter(rate.Every(time.Second/time.Duration(bw)), int(bw))
 	qm.budgetExhausted = false
 	qm.server = s
-	//TODO log params
-	qm.server.Cfg.Logger.Warn("qmon - created query monitor.")
+	qm.server.Cfg.Logger.Warn("qmon - created query monitor.",
+		zap.Uint64("memoryBudget", qm.totalMemoryBudget),
+		zap.Uint64("throttle enabled at percent", qm.enableAtPercent),
+		zap.Uint64("throttle enabled at bytes", qm.enableAtBytes),
+		zap.Uint64("throttle bandwidth bytes per sec", qm.degradedBandwidthBytesPerSec))
+
 	return &qm
 }
 
@@ -172,7 +182,7 @@ func (ctrl *BandwidthMonitor) updateAuditFlagUnsafe(rss uint64) {
 }
 
 func (ctrl *BandwidthMonitor) updateBudgetUnsafe(rss uint64) {
-	if ctrl.totalMemoryBudget/2 <= uint64(rss) {
+	if ctrl.enableAtBytes <= uint64(rss) {
 		ctrl.budgetExhausted = true
 		debug.FreeOSMemory()
 		ctrl.server.Cfg.Logger.Warn("qmon: Running FreeOSMemory.")
@@ -197,12 +207,6 @@ func (ctrl *BandwidthMonitor) isDeclinedUnsafe(q Query) (bool, uint64, uint64) {
 	}
 	if ctrl.budgetExhausted {
 		//decline
-		return true, respSize, qcount
-	}
-
-	if q.qsize > LargeReqThreshold {
-		//decline
-		//Large requests are always throttled
 		return true, respSize, qcount
 	}
 
@@ -277,7 +281,7 @@ func (ctrl *BandwidthMonitor) AdmitReq(req interface{}) bool {
 	declined, qsize, qcount := ctrl.isDeclined(q)
 
 	//dont rely on default resp size too much
-	if qcount > 5 && qsize == ctrl.defaultRespSize {
+	if declined && qcount > 5 && qsize == ctrl.defaultRespSize {
 		ctrl.server.Cfg.Logger.Warn("qmon reject. wait for gc.", zap.String("qid", q.qid), zap.Uint64("qsize", qsize), zap.Uint64("qcount", qcount))
 		return false
 	}
