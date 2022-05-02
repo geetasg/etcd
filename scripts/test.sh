@@ -690,6 +690,59 @@ function proto_annotations_pass {
   "${ETCD_ROOT_DIR}/scripts/verify_proto_annotations.sh"
 }
 
+function experimental_pass {
+  run ./tests/functional/build.sh || exit 1
+
+  # Clean up any data and logs from previous runs
+  rm -rf /tmp/etcd-experimental-* /tmp/etcd-experimental-*.backup
+
+  # TODO: These ports should be dynamically allocated instead of hard-coded.
+  for a in 1 2 3; do
+    ./bin/etcd-agent --network tcp --address 127.0.0.1:${a}9027 < /dev/null &
+    pid="$!"
+    agent_pids="${agent_pids} $pid"
+  done
+
+  for a in 1 2 3; do
+    log_callout "Waiting for 'etcd-agent' on ${a}9027..."
+    while ! nc -z localhost ${a}9027; do
+      sleep 1
+    done
+  done
+
+  log_callout "functional test for experimental features START!"
+
+  for testfile in `ls ./tests/functional/experimental/*.yaml`
+  do
+      run ./bin/etcd-tester --config $testfile -test.v && log_success "'etcd-tester' succeeded"
+      local etcd_tester_exit_code=$?
+
+      if [[ "${etcd_tester_exit_code}" -ne "0" ]]; then
+        log_error "ETCD_TESTER_EXIT_CODE:" ${etcd_tester_exit_code}
+        exit 1
+      fi
+
+      # shellcheck disable=SC2206
+      agent_pids=($agent_pids)
+      kill -s TERM "${agent_pids[@]}" || true
+
+      if [[ "${etcd_tester_exit_code}" -ne "0" ]]; then
+        log_error -e "\\nFAILED! 'tail -1000 /tmp/etcd-experimental-1/etcd.log'"
+        tail -1000 /tmp/etcd-functional-1/etcd.log
+
+        log_error -e "\\nFAILED! 'tail -1000 /tmp/etcd-experimental-2/etcd.log'"
+        tail -1000 /tmp/etcd-functional-2/etcd.log
+
+        log_error -e "\\nFAILED! 'tail -1000 /tmp/etcd-experimental-3/etcd.log'"
+        tail -1000 /tmp/etcd-functional-3/etcd.log
+
+        log_error "--- FAIL: exit code" ${etcd_tester_exit_code}
+        return ${etcd_tester_exit_code}
+      fi
+      log_success "experimental feature test PASS!"
+  done
+}
+
 ########### MAIN ###############################################################
 
 function run_pass {

@@ -60,6 +60,8 @@ var etcdFields = []string{
 
 	"SocketReuseAddress",
 	"SocketReusePort",
+
+	"BandwidthThrottle",
 }
 
 // Flags returns etcd flags in string slice.
@@ -95,6 +97,11 @@ func (e *Etcd) Flags() (fs []string) {
 
 		// TODO: remove this
 		if fname == "initial-corrupt-check" {
+			fname = "experimental-" + fname
+		}
+
+		// TODO: remove this
+		if fname == "qmon-enable-bandwidth-throttle" {
 			fname = "experimental-" + fname
 		}
 

@@ -243,6 +243,8 @@ message Etcd {
 
   bool SocketReuseAddress = 81 [(gogoproto.moretags) = "yaml:\"socket-reuse-address\""];
   bool SocketReusePort = 82 [(gogoproto.moretags) = "yaml:\"socket-reuse-port\""];
+
+  bool BandwidthThrottle = 91 [(gogoproto.moretags) = "yaml:\"qmon-enable-bandwidth-throttle\""];
 }
 
 enum Operation {
