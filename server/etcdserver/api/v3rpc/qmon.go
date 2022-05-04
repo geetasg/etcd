@@ -40,7 +40,7 @@ const (
 	DefaultAuditThresholdPercent    = 50
 	SmallReqThreshold               = 4 * 1024
 	LargeReqThreshold               = 32 * 1024 * 1024
-	DefaultEstInterval              = 10 * time.Minute
+	DefaultEstInterval              = 2 * time.Minute
 )
 
 type QueryType int64
@@ -195,7 +195,7 @@ func (ctrl *BandwidthMonitor) updateBudgetUnsafe(rss uint64) {
 func (ctrl *BandwidthMonitor) isDeclinedUnsafe(q Query) (bool, uint64, uint64) {
 	respSize := q.qsize
 	qcount := ctrl.qcount.EstimateString(q.qid)
-	ctrl.qcount.UpdateString(q.qid, qcount+1)
+	ctrl.qcount.UpdateString(q.qid, 1)
 	if q.qtype == QueryTypeRange {
 		respSize = ctrl.estRespSize.EstimateString(q.qid)
 		if respSize == 0 {
@@ -272,10 +272,9 @@ func (ctrl *BandwidthMonitor) UpdateUsage(req interface{}, resp interface{}, err
 	q := ctrl.newQueryFromReqResp(req, resp)
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
-	ctrl.estRespSize.UpdateString(q.qid, q.qsize)
-	qc := ctrl.qcount.EstimateString(q.qid)
-	if qc > 0 {
-		ctrl.qcount.UpdateString(q.qid, qc-1)
+	current := ctrl.estRespSize.EstimateString(q.qid)
+	if current == 0 {
+		ctrl.estRespSize.UpdateString(q.qid, q.qsize)
 	}
 	if ctrl.auditOn && q.qtype != QueryTypeUnknown {
 		ctrl.server.Cfg.Logger.Warn("qmon audit.", zap.String("qid", q.qid), zap.Uint64("qsize", q.qsize))
@@ -288,7 +287,7 @@ func (ctrl *BandwidthMonitor) AdmitReq(req interface{}) bool {
 
 	//dont rely on default resp size too much
 	if declined && qcount > 5 && qsize == ctrl.defaultRespSize {
-		ctrl.server.Cfg.Logger.Warn("qmon reject. wait for gc.", zap.String("qid", q.qid), zap.Uint64("qsize", qsize), zap.Uint64("qcount", qcount))
+		ctrl.server.Cfg.Logger.Warn("qmon reject. Response size unknown.", zap.String("qid", q.qid), zap.Uint64("qsize", qsize), zap.Uint64("qcount", qcount))
 		return false
 	}
 
