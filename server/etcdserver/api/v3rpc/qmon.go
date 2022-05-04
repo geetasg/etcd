@@ -292,11 +292,13 @@ func (ctrl *BandwidthMonitor) AdmitReq(req interface{}) bool {
 	}
 
 	if qsize > SmallReqThreshold && declined {
+		//TODO add metric
 		err := ctrl.throttle.WaitN(context.TODO(), int(qsize))
 		if err != nil {
 			return false
 		}
 	}
+	ctrl.server.Cfg.Logger.Warn("qmon Admit.", zap.String("qid", q.qid), zap.Uint64("qsize", qsize), zap.Uint64("qcount", qcount))
 	return true
 }
 

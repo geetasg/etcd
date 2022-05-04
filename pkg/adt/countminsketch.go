@@ -132,7 +132,7 @@ func (s *CountMinSketch) locations(key []byte) (locs []uint) {
 // Update the frequency of a key
 func (s *CountMinSketch) Update(key []byte, count uint64) {
 	for r, c := range s.locations(key) {
-		s.count[r][c] = count
+		s.count[r][c] += count
 	}
 }
 
