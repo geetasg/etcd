@@ -38,9 +38,9 @@ const (
 	DefaultRespSize                 = 4 * 1024 * 1024
 	DefaultResetTimer               = 30 * time.Second
 	DefaultAuditThresholdPercent    = 50
-	SmallReqThreshold               = 4 * 1024
+	SmallReqThreshold               = 8 * 1024
 	LargeReqThreshold               = 32 * 1024 * 1024
-	DefaultEstInterval              = 2 * time.Minute
+	DefaultEstInterval              = 10 * time.Minute
 )
 
 type QueryType int64
@@ -82,6 +82,7 @@ type BandwidthMonitor struct {
 	qcount                       *adt.CountMinSketch
 	respSizeUpdateTime           time.Time
 	estimateUpdateInterval       time.Duration
+	updateEstimate               bool
 	auditThresholdPercent        uint64
 	auditOn                      bool
 	throttle                     *rate.Limiter
@@ -166,10 +167,12 @@ func (ctrl *BandwidthMonitor) update() {
 }
 
 func (ctrl *BandwidthMonitor) resetRespSizeUnsafe() {
-	if time.Since(ctrl.respSizeUpdateTime) > ctrl.estimateUpdateInterval {
+	//reset estimates early if we have detected a size difference
+	if ctrl.updateEstimate || time.Since(ctrl.respSizeUpdateTime) > ctrl.estimateUpdateInterval {
 		ctrl.server.Cfg.Logger.Info("qmon: clearing estimates.")
 		ctrl.estRespSize, _ = adt.NewWithEstimates(0.0001, 0.9999)
 		ctrl.respSizeUpdateTime = time.Now()
+		ctrl.updateEstimate = false
 	}
 }
 
@@ -272,11 +275,20 @@ func (ctrl *BandwidthMonitor) UpdateUsage(req interface{}, resp interface{}, err
 	q := ctrl.newQueryFromReqResp(req, resp)
 	ctrl.mu.Lock()
 	defer ctrl.mu.Unlock()
+	if q.qtype == QueryTypeUnknown {
+		return
+	}
+
 	current := ctrl.estRespSize.EstimateString(q.qid)
 	if current == 0 {
 		ctrl.estRespSize.UpdateString(q.qid, q.qsize)
+		current = q.qsize
 	}
-	if ctrl.auditOn && q.qtype != QueryTypeUnknown {
+	if current != q.qsize && q.qsize > SmallReqThreshold {
+		ctrl.server.Cfg.Logger.Warn("qmon qsize changed. update estimates.", zap.String("qid", q.qid), zap.Uint64("qsize", q.qsize), zap.Uint64("current", current))
+		ctrl.updateEstimate = true
+	}
+	if ctrl.auditOn {
 		ctrl.server.Cfg.Logger.Warn("qmon audit.", zap.String("qid", q.qid), zap.Uint64("qsize", q.qsize))
 	}
 }
@@ -298,7 +310,6 @@ func (ctrl *BandwidthMonitor) AdmitReq(req interface{}) bool {
 			return false
 		}
 	}
-	ctrl.server.Cfg.Logger.Warn("qmon Admit.", zap.String("qid", q.qid), zap.Uint64("qsize", qsize), zap.Uint64("qcount", qcount))
 	return true
 }
 
