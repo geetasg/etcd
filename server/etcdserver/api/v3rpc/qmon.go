@@ -18,7 +18,7 @@ import (
 	"context"
 	"fmt"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	adt "go.etcd.io/etcd/pkg/v3/adt"
+	adt "github.com/shenwei356/countminsketch"
 	"go.etcd.io/etcd/server/v3/etcdserver"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
