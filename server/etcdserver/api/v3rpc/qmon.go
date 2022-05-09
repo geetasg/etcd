@@ -17,8 +17,8 @@ package v3rpc
 import (
 	"context"
 	"fmt"
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	adt "github.com/shenwei356/countminsketch"
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/server/v3/etcdserver"
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
