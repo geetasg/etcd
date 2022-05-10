@@ -210,8 +210,8 @@ type ServerConfig struct {
 	// ExperimentalQmonThrottleEnableAtPercent - throttle is enabled when rss is this much percent of total memory budget
 	ExperimentalQmonThrottleEnableAtPercent uint
 
-	// ExperimentalQmonEvalInterval indicates the interval at which memory pressure is evaluated
-	ExperimentalQmonEvalInterval time.Duration
+	// ExperimentalQmonAlwaysOnForLargeReq indicates if large requests should be always throttled
+	ExperimentalQmonAlwaysOnForLargeReq bool
 }
 
 // VerifyBootstrap sanity-checks the initial config for bootstrap case

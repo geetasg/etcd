@@ -423,8 +423,8 @@ type Config struct {
 	// ExperimentalQmonThrottleEnableAtPercent throttle is enabled when rss crosses this percent of total memory budget
 	ExperimentalQmonThrottleEnableAtPercent uint `json:"experimental-qmon-throttle-enable-at-percent"`
 
-	// ExperimentalQmonEvalInterval indicates the interval at which memory pressure is evaluated
-	ExperimentalQmonEvalInterval time.Duration `json:"experimental-qmon-eval-interval"`
+	// ExperimentalQmonAlwaysOnForLargeReq indicates that large requests (more than 64MB size) will always get throttled
+	ExperimentalQmonAlwaysOnForLargeReq bool `json:"experimental-qmon-always-on-for-large-req"`
 }
 
 // configYAML holds the config suitable for yaml parsing

@@ -36,10 +36,10 @@ const (
 	DefaultThrtottleEnableAtPercent = 50
 	MegaByte                        = 1 * 1024 * 1024
 	DefaultRespSize                 = 4 * 1024 * 1024
-	DefaultResetTimer               = 30 * time.Second
+	DefaultResetTimer               = 20 * time.Second
 	DefaultAuditThresholdPercent    = 50
 	SmallReqThreshold               = 8 * 1024
-	LargeReqThreshold               = 32 * 1024 * 1024
+	LargeReqThreshold               = 64 * 1024 * 1024
 	DefaultEstInterval              = 10 * time.Minute
 )
 
@@ -85,6 +85,7 @@ type BandwidthMonitor struct {
 	updateEstimate               bool
 	auditThresholdPercent        uint64
 	auditOn                      bool
+	alwaysOnForLargeReq          bool
 	throttle                     *rate.Limiter
 	mu                           sync.Mutex
 	server                       *etcdserver.EtcdServer
@@ -107,7 +108,14 @@ func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 	qm.defaultRespSize = DefaultRespSize
 	qm.resetTimer = DefaultResetTimer
 
-	remaining := qm.totalMemoryBudget - qm.enableAtBytes
+	if s.Cfg.ExperimentalQmonAlwaysOnForLargeReq {
+		qm.alwaysOnForLargeReq = true
+	}
+
+	remaining := qm.totalMemoryBudget
+	if !qm.alwaysOnForLargeReq {
+		remaining = qm.totalMemoryBudget - qm.enableAtBytes
+	}
 	timeToGC := uint64(qm.resetTimer / time.Second)
 	bw := remaining / timeToGC
 	qm.degradedBandwidthBytesPerSec = bw
@@ -123,6 +131,7 @@ func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 	qm.server = s
 	qm.server.Cfg.Logger.Warn("qmon - created query monitor.",
 		zap.Uint64("memoryBudget", qm.totalMemoryBudget),
+		zap.Bool("Always on for large req", qm.alwaysOnForLargeReq),
 		zap.Uint64("throttle enabled at percent", qm.enableAtPercent),
 		zap.Uint64("throttle enabled at bytes", qm.enableAtBytes),
 		zap.Uint64("throttle bandwidth bytes per sec", qm.degradedBandwidthBytesPerSec))
@@ -298,12 +307,12 @@ func (ctrl *BandwidthMonitor) AdmitReq(req interface{}) bool {
 	declined, qsize, qcount := ctrl.isDeclined(q)
 
 	//dont rely on default resp size too much
-	if declined && qcount > 5 && qsize == ctrl.defaultRespSize {
+	if (ctrl.alwaysOnForLargeReq || declined) && qcount > 5 && qsize == ctrl.defaultRespSize {
 		ctrl.server.Cfg.Logger.Warn("qmon reject. Response size unknown.", zap.String("qid", q.qid), zap.Uint64("qsize", qsize), zap.Uint64("qcount", qcount))
 		return false
 	}
 
-	if qsize > SmallReqThreshold && declined {
+	if (qsize > SmallReqThreshold && declined) || (qsize > LargeReqThreshold && ctrl.alwaysOnForLargeReq) {
 		//TODO add metric
 		err := ctrl.throttle.WaitN(context.TODO(), int(qsize))
 		if err != nil {
