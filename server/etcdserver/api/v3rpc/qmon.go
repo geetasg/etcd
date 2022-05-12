@@ -33,7 +33,7 @@ import (
 
 const (
 	DefaultTotalMemoryBudget        = 1 * 1024 * 1024 * 1024
-	DefaultThrtottleEnableAtPercent = 50
+	DefaultThrtottleEnableAtPercent = 10
 	MegaByte                        = 1 * 1024 * 1024
 	DefaultRespSize                 = 4 * 1024 * 1024
 	DefaultResetTimer               = 20 * time.Second
