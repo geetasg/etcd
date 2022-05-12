@@ -63,6 +63,10 @@ func Server(s *etcdserver.EtcdServer, tls *tls.Config, interceptor grpc.UnarySer
 
 	}
 
+	if s.Cfg.ExperimentalQmonEnableBandwidthThrottle {
+		chainUnaryInterceptors = append(chainUnaryInterceptors, newQmonInterceptor(s))
+	}
+
 	opts = append(opts, grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(chainUnaryInterceptors...)))
 	opts = append(opts, grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(chainStreamInterceptors...)))
 

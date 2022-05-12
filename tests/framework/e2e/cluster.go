@@ -176,6 +176,8 @@ type EtcdProcessClusterConfig struct {
 	DiscoveryEndpoints []string // v3 discovery
 	DiscoveryToken     string
 	LogLevel           string
+
+	EnableBandwidthThrottle bool
 }
 
 // NewEtcdProcessCluster launches a new cluster from etcd processes, returning
@@ -339,6 +341,10 @@ func (cfg *EtcdProcessClusterConfig) EtcdServerProcessConfigs(tb testing.TB) []*
 
 		if cfg.LogLevel != "" {
 			args = append(args, "--log-level", cfg.LogLevel)
+		}
+
+		if cfg.EnableBandwidthThrottle {
+			args = append(args, "--experimental-qmon-enable-bandwidth-throttle=true")
 		}
 
 		etcdCfgs[i] = &EtcdServerProcessConfig{

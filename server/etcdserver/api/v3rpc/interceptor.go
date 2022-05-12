@@ -349,3 +349,22 @@ func monitorLeader(s *etcdserver.EtcdServer) *streamsMap {
 
 	return smap
 }
+
+func newQmonInterceptor(s *etcdserver.EtcdServer) grpc.UnaryServerInterceptor {
+	qmonitor := NewQueryMonitor(s)
+	qmonitor.Start()
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		var err error
+		if !qmonitor.AdmitReq(req) {
+			err = rpctypes.ErrGRPCRequestTooManyRequests
+			return nil, err
+		}
+		resp, err := handler(ctx, req)
+		defer updateQueryMonitor(ctx, s.Logger(), qmonitor, info, req, resp, err)
+		return resp, err
+	}
+}
+
+func updateQueryMonitor(ctx context.Context, lg *zap.Logger, qmon QueryMonitor, info *grpc.UnaryServerInfo, req interface{}, resp interface{}, err error) {
+	qmon.UpdateUsage(req, resp, err)
+}

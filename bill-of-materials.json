@@ -315,6 +315,15 @@
 		]
 	},
 	{
+		"project": "github.com/shenwei356/countminsketch",
+		"licenses": [
+			{
+				"type": "MIT License",
+				"confidence": 1
+			}
+		]
+	},
+	{
 		"project": "github.com/sirupsen/logrus",
 		"licenses": [
 			{
