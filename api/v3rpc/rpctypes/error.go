@@ -92,6 +92,8 @@ var (
 	ErrGRPCCanceled         = status.New(codes.Canceled, "etcdserver: request canceled").Err()
 	ErrGRPCDeadlineExceeded = status.New(codes.DeadlineExceeded, "etcdserver: context deadline exceeded").Err()
 
+	ErrGRPCQmonTooManyRequests = status.New(codes.ResourceExhausted, "etcdserver: throttle: too many requests").Err()
+
 	errStringToError = map[string]error{
 		ErrorDesc(ErrGRPCEmptyKey):      ErrGRPCEmptyKey,
 		ErrorDesc(ErrGRPCKeyNotFound):   ErrGRPCKeyNotFound,
@@ -156,6 +158,8 @@ var (
 		ErrorDesc(ErrGRPCInvalidDowngradeTargetVersion): ErrGRPCInvalidDowngradeTargetVersion,
 		ErrorDesc(ErrGRPCDowngradeInProcess):            ErrGRPCDowngradeInProcess,
 		ErrorDesc(ErrGRPCNoInflightDowngrade):           ErrGRPCNoInflightDowngrade,
+
+		ErrorDesc(ErrGRPCQmonTooManyRequests): ErrGRPCQmonTooManyRequests,
 	}
 )
 
@@ -223,6 +227,8 @@ var (
 	ErrInvalidDowngradeTargetVersion = Error(ErrGRPCInvalidDowngradeTargetVersion)
 	ErrDowngradeInProcess            = Error(ErrGRPCDowngradeInProcess)
 	ErrNoInflightDowngrade           = Error(ErrGRPCNoInflightDowngrade)
+
+	ErrQmonTooManyRequests = Error(ErrGRPCQmonTooManyRequests)
 )
 
 // EtcdError defines gRPC server errors.

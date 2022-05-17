@@ -87,6 +87,7 @@ func rangeReqTest(cx ctlCtx) {
 	var kvs []kv
 	kvs = make([]kv, 10)
 	quit := make(chan bool)
+	defer close(quit)
 
 	go checkMem(quit)
 

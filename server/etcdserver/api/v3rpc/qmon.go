@@ -1,4 +1,4 @@
-// Copyright 1016 The etcd Authors
+// Copyright 2022 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,30 +17,30 @@ package v3rpc
 import (
 	"context"
 	"fmt"
-	adt "github.com/shenwei356/countminsketch"
-	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	"go.etcd.io/etcd/server/v3/etcdserver"
-	"go.uber.org/zap"
-	"golang.org/x/time/rate"
-	"io/ioutil"
 	"os"
 	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	adt "github.com/shenwei356/countminsketch"
+	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/server/v3/etcdserver"
+	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 )
 
 const (
-	DefaultTotalMemoryBudget        = 1 * 1024 * 1024 * 1024
-	DefaultThrtottleEnableAtPercent = 10
-	MegaByte                        = 1 * 1024 * 1024
-	DefaultRespSize                 = 4 * 1024 * 1024
-	DefaultResetTimer               = 20 * time.Second
-	DefaultAuditThresholdPercent    = 50
-	SmallReqThreshold               = 8 * 1024
-	LargeReqThreshold               = 64 * 1024 * 1024
-	DefaultEstInterval              = 10 * time.Minute
+	DefaultTotalMemoryBudget       = 1 * 1024 * 1024 * 1024
+	DefaultThrottleEnableAtPercent = 10
+	MegaByte                       = 1 * 1024 * 1024
+	DefaultRespSize                = 4 * 1024 * 1024
+	DefaultResetTimer              = 20 * time.Second
+	DefaultAuditThresholdPercent   = 50
+	SmallReqThreshold              = 8 * 1024
+	LargeReqThreshold              = 64 * 1024 * 1024
+	DefaultEstInterval             = 10 * time.Minute
 )
 
 type QueryType int64
@@ -70,6 +70,7 @@ type QueryMonitor interface {
 	Stop()
 }
 
+// BandwidthMonitor implements memory pressure aware token bucket based rate limiter
 type BandwidthMonitor struct {
 	totalMemoryBudget            uint64
 	defaultRespSize              uint64
@@ -99,7 +100,7 @@ func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 		qm.totalMemoryBudget = uint64(s.Cfg.ExperimentalQmonMemoryBudgetMegabytes) * MegaByte
 	}
 
-	qm.enableAtPercent = DefaultThrtottleEnableAtPercent
+	qm.enableAtPercent = DefaultThrottleEnableAtPercent
 	if s.Cfg.ExperimentalQmonThrottleEnableAtPercent != 0 {
 		qm.enableAtPercent = uint64(s.Cfg.ExperimentalQmonThrottleEnableAtPercent)
 	}
@@ -335,7 +336,7 @@ func (ctrl *BandwidthMonitor) Stop() {
 func getCurrentRssBytes(logger *zap.Logger) uint64 {
 	pid := os.Getpid()
 	statm := fmt.Sprintf("/proc/%d/statm", pid)
-	buf, err := ioutil.ReadFile(statm)
+	buf, err := os.ReadFile(statm)
 	if err != nil {
 		logger.Error("qmon failed to read statm file", zap.String("statm file", statm), zap.Error(err))
 		return 0
