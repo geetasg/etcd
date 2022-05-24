@@ -52,7 +52,7 @@ var (
 	throttledRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "etcd",
 		Subsystem: "server",
-		Name:      "throttled_requests_total",
+		Name:      "qmon_throttled_requests_total",
 		Help:      "The total number of throttled requests per request type.",
 	},
 		[]string{"type", "request_type"},
