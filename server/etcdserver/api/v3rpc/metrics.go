@@ -48,6 +48,15 @@ var (
 	},
 		[]string{"type", "client_api_version"},
 	)
+
+	throttledRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "etcd",
+		Subsystem: "server",
+		Name:      "throttled_requests_total",
+		Help:      "The total number of throttled requests per request type.",
+	},
+		[]string{"type", "request_type"},
+	)
 )
 
 func init() {
@@ -55,4 +64,5 @@ func init() {
 	prometheus.MustRegister(receivedBytes)
 	prometheus.MustRegister(streamFailures)
 	prometheus.MustRegister(clientRequests)
+	prometheus.MustRegister(throttledRequests)
 }

@@ -314,9 +314,10 @@ func (ctrl *BandwidthMonitor) AdmitReq(req interface{}) bool {
 	}
 
 	if (qsize > SmallReqThreshold && declined) || (qsize > LargeReqThreshold && ctrl.alwaysOnForLargeReq) {
-		//TODO add metric
+		throttledRequests.WithLabelValues("unary", "range").Inc()
 		err := ctrl.throttle.WaitN(context.TODO(), int(qsize))
 		if err != nil {
+			ctrl.server.Cfg.Logger.Warn("qmon throttle failed.", zap.String("qid", q.qid), zap.Uint64("qsize", qsize), zap.Error(err))
 			return false
 		}
 	}
