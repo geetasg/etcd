@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -119,7 +120,8 @@ func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 	}
 	timeToGC := uint64(qm.resetTimer / time.Second)
 	bw := remaining / timeToGC
-	qm.degradedBandwidthBytesPerSec = bw
+	procs := uint64(runtime.GOMAXPROCS(0))
+	qm.degradedBandwidthBytesPerSec = bw / procs
 
 	qm.estRespSize, _ = adt.NewWithEstimates(0.0001, 0.9999)
 	qm.qcount, _ = adt.NewWithEstimates(0.0001, 0.9999)
@@ -132,10 +134,11 @@ func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 	qm.server = s
 	qm.server.Cfg.Logger.Warn("qmon - created query monitor.",
 		zap.Uint64("memoryBudget", qm.totalMemoryBudget),
+		zap.Uint64("gomaxprocs", procs),
 		zap.Bool("Always on for large req", qm.alwaysOnForLargeReq),
 		zap.Uint64("throttle enabled at percent", qm.enableAtPercent),
 		zap.Uint64("throttle enabled at bytes", qm.enableAtBytes),
-		zap.Uint64("throttle bandwidth bytes per sec", qm.degradedBandwidthBytesPerSec))
+		zap.Uint64("throttle bandwidth bytes per sec per proc", qm.degradedBandwidthBytesPerSec))
 
 	return &qm
 }
