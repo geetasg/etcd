@@ -37,10 +37,10 @@ const (
 	DefaultThrottleEnableAtPercent = 10
 	MegaByte                       = 1 * 1024 * 1024
 	DefaultRespSize                = 4 * 1024 * 1024
-	DefaultResetTimer              = 20 * time.Second
+	DefaultResetTimer              = 15 * time.Second
 	DefaultAuditThresholdPercent   = 50
 	SmallReqThreshold              = 8 * 1024
-	LargeReqThreshold              = 64 * 1024 * 1024
+	LargeReqThreshold              = 16 * 1024 * 1024
 	DefaultEstInterval             = 10 * time.Minute
 )
 
@@ -114,10 +114,9 @@ func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 		qm.alwaysOnForLargeReq = true
 	}
 
-	remaining := qm.totalMemoryBudget
-	if !qm.alwaysOnForLargeReq {
-		remaining = qm.totalMemoryBudget - qm.enableAtBytes
-	}
+	//Even when alwaysOnForLargeReq is enabled, do not initialize remaining to totalMemoryBudget
+	//Use the conservative bandwidth instead which is used when mem pressure is high
+	remaining := qm.totalMemoryBudget - qm.enableAtBytes
 	timeToGC := uint64(qm.resetTimer / time.Second)
 	bw := remaining / timeToGC
 	procs := uint64(runtime.GOMAXPROCS(0))
