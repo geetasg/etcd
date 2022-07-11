@@ -71,56 +71,67 @@ type QueryMonitor interface {
 	Stop()
 }
 
-// BandwidthMonitor implements memory pressure aware token bucket based rate limiter
-type BandwidthMonitor struct {
-	totalMemoryBudget            uint64
-	defaultRespSize              uint64
-	degradedBandwidthBytesPerSec uint64
-	enableAtPercent              uint64
-	enableAtBytes                uint64
-	budgetExhausted              bool
-	resetTimer                   time.Duration
-	estRespSize                  *adt.CountMinSketch
-	qcount                       *adt.CountMinSketch
-	respSizeUpdateTime           time.Time
-	estimateUpdateInterval       time.Duration
-	updateEstimate               bool
-	auditThresholdPercent        uint64
-	auditOn                      bool
-	alwaysOnForLargeReq          bool
-	throttle                     *rate.Limiter
-	mu                           sync.Mutex
-	server                       *etcdserver.EtcdServer
+// BandwidthMonitorConfig externally tunable parameters of bandwidth monitor
+type BandwidthMonitorConfig struct {
+	totalMemoryBudget   uint64
+	enableAtPercent     uint64
+	alwaysOnForLargeReq bool
 }
 
-func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
-	var qm BandwidthMonitor
+// BandwidthMonitor implements memory pressure aware token bucket based rate limiter
+type BandwidthMonitor struct {
+	cfg                    BandwidthMonitorConfig
+	defaultRespSize        uint64
+	enableAtBytes          uint64
+	budgetExhausted        bool
+	resetTimer             time.Duration
+	estRespSize            *adt.CountMinSketch
+	qcount                 *adt.CountMinSketch
+	respSizeUpdateTime     time.Time
+	estimateUpdateInterval time.Duration
+	updateEstimate         bool
+	auditThresholdPercent  uint64
+	auditOn                bool
+	throttle               *rate.Limiter
+	mu                     sync.Mutex
+	server                 *etcdserver.EtcdServer
+}
 
-	qm.totalMemoryBudget = DefaultTotalMemoryBudget
+func BuildQueryMonitorCfg(s *etcdserver.EtcdServer) BandwidthMonitorConfig {
+
+	var cfg BandwidthMonitorConfig
+
+	cfg.totalMemoryBudget = DefaultTotalMemoryBudget
 	if s.Cfg.ExperimentalQmonMemoryBudgetMegabytes != 0 {
-		qm.totalMemoryBudget = uint64(s.Cfg.ExperimentalQmonMemoryBudgetMegabytes) * MegaByte
+		cfg.totalMemoryBudget = uint64(s.Cfg.ExperimentalQmonMemoryBudgetMegabytes) * MegaByte
 	}
 
-	qm.enableAtPercent = DefaultThrottleEnableAtPercent
+	cfg.enableAtPercent = DefaultThrottleEnableAtPercent
 	if s.Cfg.ExperimentalQmonThrottleEnableAtPercent != 0 {
-		qm.enableAtPercent = uint64(s.Cfg.ExperimentalQmonThrottleEnableAtPercent)
+		cfg.enableAtPercent = uint64(s.Cfg.ExperimentalQmonThrottleEnableAtPercent)
 	}
-	qm.enableAtBytes = qm.totalMemoryBudget * qm.enableAtPercent / 100
 
+	if s.Cfg.ExperimentalQmonAlwaysOnForLargeReq {
+		cfg.alwaysOnForLargeReq = true
+	}
+
+	return cfg
+}
+
+func NewQueryMonitor(s *etcdserver.EtcdServer, cfg BandwidthMonitorConfig) QueryMonitor {
+	var qm BandwidthMonitor
+	qm.cfg = cfg
+
+	qm.enableAtBytes = qm.cfg.totalMemoryBudget * qm.cfg.enableAtPercent / 100
 	qm.defaultRespSize = DefaultRespSize
 	qm.resetTimer = DefaultResetTimer
 
-	if s.Cfg.ExperimentalQmonAlwaysOnForLargeReq {
-		qm.alwaysOnForLargeReq = true
-	}
-
 	//Even when alwaysOnForLargeReq is enabled, do not initialize remaining to totalMemoryBudget
 	//Use the conservative bandwidth instead which is used when mem pressure is high
-	remaining := qm.totalMemoryBudget - qm.enableAtBytes
+	remaining := qm.cfg.totalMemoryBudget - qm.enableAtBytes
 	timeToGC := uint64(qm.resetTimer / time.Second)
 	bw := remaining / timeToGC
 	procs := uint64(runtime.GOMAXPROCS(0))
-	qm.degradedBandwidthBytesPerSec = bw / procs
 
 	qm.estRespSize, _ = adt.NewWithEstimates(0.0001, 0.9999)
 	qm.qcount, _ = adt.NewWithEstimates(0.0001, 0.9999)
@@ -132,12 +143,12 @@ func NewQueryMonitor(s *etcdserver.EtcdServer) QueryMonitor {
 	qm.budgetExhausted = false
 	qm.server = s
 	qm.server.Cfg.Logger.Warn("qmon - created query monitor.",
-		zap.Uint64("memoryBudget", qm.totalMemoryBudget),
+		zap.Uint64("memoryBudget", qm.cfg.totalMemoryBudget),
 		zap.Uint64("gomaxprocs", procs),
-		zap.Bool("Always on for large req", qm.alwaysOnForLargeReq),
-		zap.Uint64("throttle enabled at percent", qm.enableAtPercent),
+		zap.Bool("Always on for large req", qm.cfg.alwaysOnForLargeReq),
+		zap.Uint64("throttle enabled at percent", qm.cfg.enableAtPercent),
 		zap.Uint64("throttle enabled at bytes", qm.enableAtBytes),
-		zap.Uint64("throttle bandwidth bytes per sec per proc", qm.degradedBandwidthBytesPerSec))
+		zap.Uint64("throttle bandwidth bytes per sec per proc", bw))
 
 	return &qm
 }
@@ -189,7 +200,7 @@ func (ctrl *BandwidthMonitor) resetRespSizeUnsafe() {
 }
 
 func (ctrl *BandwidthMonitor) updateAuditFlagUnsafe(rss uint64) {
-	if (ctrl.totalMemoryBudget*ctrl.auditThresholdPercent)/100 <= uint64(rss) {
+	if (ctrl.cfg.totalMemoryBudget*ctrl.auditThresholdPercent)/100 <= uint64(rss) {
 		ctrl.auditOn = true
 	} else {
 		ctrl.auditOn = false
@@ -310,12 +321,12 @@ func (ctrl *BandwidthMonitor) AdmitReq(req interface{}) bool {
 	declined, qsize, qcount := ctrl.isDeclined(q)
 
 	//dont rely on default resp size too much
-	if (ctrl.alwaysOnForLargeReq || declined) && qcount > 5 && qsize == ctrl.defaultRespSize {
+	if (ctrl.cfg.alwaysOnForLargeReq || declined) && qcount > 5 && qsize == ctrl.defaultRespSize {
 		ctrl.server.Cfg.Logger.Warn("qmon reject. Response size unknown.", zap.String("qid", q.qid), zap.Uint64("qsize", qsize), zap.Uint64("qcount", qcount))
 		return false
 	}
 
-	if (qsize > SmallReqThreshold && declined) || (qsize > LargeReqThreshold && ctrl.alwaysOnForLargeReq) {
+	if (qsize > SmallReqThreshold && declined) || (qsize > LargeReqThreshold && ctrl.cfg.alwaysOnForLargeReq) {
 		throttledRequests.WithLabelValues("unary", "range").Inc()
 		err := ctrl.throttle.WaitN(context.TODO(), int(qsize))
 		if err != nil {

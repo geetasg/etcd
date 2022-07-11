@@ -351,7 +351,7 @@ func monitorLeader(s *etcdserver.EtcdServer) *streamsMap {
 }
 
 func newQmonInterceptor(s *etcdserver.EtcdServer) grpc.UnaryServerInterceptor {
-	qmonitor := NewQueryMonitor(s)
+	qmonitor := NewQueryMonitor(s, BuildQueryMonitorCfg(s))
 	qmonitor.Start()
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		var err error
