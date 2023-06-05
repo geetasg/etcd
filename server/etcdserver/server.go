@@ -853,8 +853,10 @@ func (s *EtcdServer) run() {
 			lg.Warn("data-dir used by this member must be removed")
 			return
 		case <-getSyncC():
-			if s.v2store.HasTTLKeys() {
-				s.sync(s.Cfg.ReqTimeout())
+			if s.v2store != nil {
+				if s.v2store.HasTTLKeys() {
+					s.sync(s.Cfg.ReqTimeout())
+				}
 			}
 		case <-s.stop:
 			return
@@ -1890,15 +1892,18 @@ func (s *EtcdServer) applyEntryNormal(e *raftpb.Entry) {
 		rp := &r
 		pbutil.MustUnmarshal(rp, e.Data)
 		s.lg.Debug("applyEntryNormal", zap.Stringer("V2request", rp))
-		s.w.Trigger(r.ID, s.applyV2Request((*RequestV2)(rp), shouldApplyV3))
+		if s.v2store != nil {
+			s.w.Trigger(r.ID, s.applyV2Request((*RequestV2)(rp), shouldApplyV3))
+		}
 		return
 	}
 	s.lg.Debug("applyEntryNormal", zap.Stringer("raftReq", &raftReq))
-
-	if raftReq.V2 != nil {
-		req := (*RequestV2)(raftReq.V2)
-		s.w.Trigger(req.ID, s.applyV2Request(req, shouldApplyV3))
-		return
+	if s.v2store != nil {
+		if raftReq.V2 != nil {
+			req := (*RequestV2)(raftReq.V2)
+			s.w.Trigger(req.ID, s.applyV2Request(req, shouldApplyV3))
+			return
+		}
 	}
 
 	id := raftReq.ID
